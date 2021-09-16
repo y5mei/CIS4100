@@ -8,3 +8,8 @@ F21 CIS4100 Cloud Computing
 | Assign-3 | Computation VM's| Week8 November 7|
 | Assign-4 | Serverless | Week10 November 21|
 | Assign-5 | Multi/Hybrid Cloud| Week12 December 5|
+
+----
+# Some Notes for BAT Command:
+1. Use /d to change directory: cd /d E:
+2. Change to the current user's home directory: cd %userprofile% 
