@@ -53,3 +53,18 @@ for i, r in enumerate(response):
 # bucket = s3.Bucket("cis4010-ymei")
 # files = list(bucket.objects.all())
 # print(files[0].key)
+def rE(myint):
+    try:
+        b = myint%2
+        print(b)
+        return 0
+    except:
+        print(str(myint))
+        return 100
+
+    finally:
+        return 10010012
+
+
+
+print(rE("pig"))
