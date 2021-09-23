@@ -26,9 +26,6 @@ UNSUCCESS = 1
 
 # read the credentials as a dictionary
 d = ReadCredentials.buildCredentialDict()
-# detected the current running environment
-running_platform = platform.system()
-print(running_platform)
 
 
 # check if the S5 shell can connect to the internet
@@ -81,12 +78,14 @@ try:
                               aws_secret_access_key=d["aws_secret_access_key"], )
     # List all of the possible waiters for both clients
     response = client.list_buckets()
+    # print(response)
     print("==========================================")
     print(colored(ON_CONNECTION_SUCCESS_TEXT, "green"))
     print("==========================================")
 
-except:
+except BaseException as e:
     print(colored(ON_CONNECTION_FAIL_TEXT, "red"))
+    print(e)
     sys.exit(0)
 
 
@@ -150,15 +149,58 @@ def do_lc_copy(args: str) -> int:
     return SUCCESS
 
 
+def do_current_work_folder(args: str) -> int:
+    if args != "":
+        print(colored("S5 Error: No Token should follow the cwf command name.", "red"))
+        return UNSUCCESS
+    print(s3_working_directory)
+    return SUCCESS
+
+# need to finish this!!!!
+#
+#
+#
+#
+#
+def do_change_directory(args: str) -> int:
+    print(args)
+    b = resource.Bucket("cis4010-ymei")
+    for file in b.objects.all():
+        print(file.key)
+    print("the bucket is : ", b)
+    return SUCCESS
+
 def do_create_bucket(args: str) -> int:
+    s3_location = {
+        'LocationConstraint': 'us-east-2'}
     try:
-        s3_location ={
-        'LocationConstraint': 'af-south-1'}
-        response = client.create_bucket(Bucket=args, CreateBucketConfiguration=s3_location)
+        bucket = resource.create_bucket(Bucket=args, CreateBucketConfiguration=s3_location)
         return SUCCESS
     except BaseException as e:
+        print(colored("Can not create bucket! Please see the exception message below:", "red"))
         print(e)
-        print(colored("S5 Error: Can not create the bucket: " + args, "red"))
+        return UNSUCCESS
+    # I do not know why client does not work!!!
+    # Maybe I need to do something with location constraint object???
+    # try:
+    #     s3_location ={
+    #     'LocationConstraint': 'af-south-1'}
+    #     response = client.create_bucket(Bucket=args, CreateBucketConfiguration=s3_location)
+    #     return SUCCESS
+    # except BaseException as e:
+    #     print(e)
+    #     print(colored("S5 Error: Can not create the bucket: " + args, "red"))
+    #     return UNSUCCESS
+
+
+def do_delete_bucket(args: str) -> int:
+    try:
+        response = client.delete_bucket(Bucket=args, )
+        print(colored("Bucket: " + args + ", has been successfully deleted.", "green"))
+        return SUCCESS
+    except BaseException as e:
+        print(colored("Can not delete the bucket, please see the exception message below:", "red"))
+        print(e)
         return UNSUCCESS
 
 
@@ -192,12 +234,22 @@ dispatch = {
     "exit": do_quit,
     "list": do_list,
     "cb": do_create_bucket,
+    "create_bucket": do_create_bucket,
+    "db": do_delete_bucket,
+    "delete_bucket": do_delete_bucket,
+    "q": do_quit,
+    "cwf": do_current_work_folder,
+    "cf": do_change_directory,
 }
 
-# Listen to a command input
-value = ""
-customized_function_list = ["exit", "quit"]
-# while value != "exit" or value != "quit":
+# detected the current running environment
+running_platform = platform.system()
+print(running_platform)
+# detect the current local working directory
+local_working_directory = os.getcwd()
+s3_working_directory = "/"
+print(local_working_directory)
+
 while True:
 
     user_input = input("S5> ")
