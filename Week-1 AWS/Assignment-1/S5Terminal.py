@@ -10,6 +10,8 @@ import botocore
 from colorama import init
 from termcolor import colored
 import requests
+from tabulate import tabulate
+from pathlib import Path
 
 # use Colorama to make Termcolor work on Windows too
 # ref： https://pypi.org/project/colorama/
@@ -88,6 +90,20 @@ except BaseException as e:
     print(e)
     sys.exit(0)
 
+##########################################################################################
+# Main Entrance of this program
+##########################################################################################
+# detected the current running environment
+running_platform = platform.system()
+print(running_platform)
+# detect the current local working directory
+local_working_directory = os.getcwd()
+print(local_working_directory)
+global s3_working_directory
+global s3_bucket_name
+s3_working_directory = ""
+s3_bucket_name = ""
+
 
 # How to use python to do function dispatch
 # https://softwareengineering.stackexchange.com/questions/182093/why-store-a-function-inside-a-python-dictionary/182095
@@ -150,11 +166,22 @@ def do_lc_copy(args: str) -> int:
 
 
 def do_current_work_folder(args: str) -> int:
+    global s3_working_directory
+    global s3_bucket_name
+
     if args != "":
         print(colored("S5 Error: No Token should follow the cwf command name.", "red"))
         return UNSUCCESS
-    print(s3_working_directory)
+
+    if s3_bucket_name == "":
+        print("/")
+    else:
+        result = s3_bucket_name + ":" + s3_working_directory
+        if result[-1] == "/":
+            result = result[:-1]
+        print(result)
     return SUCCESS
+
 
 # need to finish this!!!!
 #
@@ -162,13 +189,93 @@ def do_current_work_folder(args: str) -> int:
 #
 #
 #
-def do_change_directory(args: str) -> int:
-    print(args)
-    b = resource.Bucket("cis4010-ymei")
-    for file in b.objects.all():
-        print(file.key)
-    print("the bucket is : ", b)
-    return SUCCESS
+def __check_folder_avaliable__(bucket_name, file_path_name) -> bool:
+    global s3_working_directory
+    global s3_bucket_name
+
+    bucket_name = s3_bucket_name
+    file_path_name = s3_working_directory
+    try:
+        bucket = resource.Bucket(s3_bucket_name)
+        for object_summary in bucket.objects.filter(Prefix=file_path_name):
+            return True
+        return False
+    except BaseException as e:
+        print(colored(e, "yellow"))
+
+
+def do_change_folder(args: str) -> int:
+    global s3_working_directory
+    global s3_bucket_name
+    temp_s3_working_directory = s3_working_directory
+    temp_s3_bucket_name = s3_bucket_name
+    print("currently working with " + temp_s3_bucket_name + "  :  " + temp_s3_working_directory)
+
+    if args == "" or args == ".":
+        return SUCCESS
+
+    if args == "/":
+        s3_bucket_name = ""
+        s3_working_directory = ""
+        return SUCCESS
+
+    if ":" in args:  # this is a absolute path
+        s3_bucket_name = args.split(":", 1)[0]
+        s3_working_directory = args.split(":", 1)[1]
+        # make sure this is a slash at the end
+        if s3_working_directory != "" and s3_working_directory[-1] != "/":
+            s3_working_directory += "/"
+    if ":" not in args:
+        if s3_bucket_name == "":  # in this case, this is a absolute path, lead to a bucket
+            s3_bucket_name = args
+            s3_working_directory = ""
+        else:  # in this case, this is a relative path, lead to a folder inside of the current bucket
+            s3_working_directory += args
+            if args[-1] != "/":
+                s3_working_directory += "/"
+            # print ("now the raw cwf is " +s3_working_directory )
+
+            # print all the keys in the bucket:
+            # bucket = resource.Bucket(s3_bucket_name)
+            # for item in bucket.objects.all():
+            #     print(item)
+    #########################################################################
+    # This is the difficult part, we need to resolve the relative path here
+    #########################################################################
+    folder_list = s3_working_directory.split("/")
+    result = []
+
+    for i in folder_list:
+        if i == ".":
+            pass
+        if i != "..":
+            result.append(i)
+        if i == ".." and result:
+            result.pop()
+
+    s3_working_directory = "/".join(result)
+    # print("now the cooked cwf is " + s3_working_directory)
+    # Finally, try to check if this folder is valid or not, if not valid, change back to the pre folder
+    try:
+        if s3_working_directory != "":
+            fullPath = s3_bucket_name + ": " + s3_working_directory
+            errorMessage = "\nThe input folder " + fullPath + " does not exist!"
+            item = resource.Object(s3_bucket_name, s3_working_directory).get()
+            return SUCCESS
+        else:
+            fullPath = s3_bucket_name
+            errorMessage = "\nThe input bucket " + fullPath + " does not exist!"
+            bucket = resource.meta.client.head_bucket(Bucket=s3_bucket_name)
+            return SUCCESS
+
+    except BaseException as e:
+        print(colored("S5 Error: Can not change folder due to invalid input: " + s3_working_directory + errorMessage,
+                      "red"))
+        print(e)
+        s3_working_directory = temp_s3_working_directory
+        s3_bucket_name = temp_s3_bucket_name
+        return UNSUCCESS
+
 
 def do_create_bucket(args: str) -> int:
     s3_location = {
@@ -193,6 +300,40 @@ def do_create_bucket(args: str) -> int:
     #     return UNSUCCESS
 
 
+def do_delete_object(args: str) -> int:
+    # need to support delete on full path and indirect pathname
+    arglist = args.split(":")
+
+    if (len(arglist) == 1):
+        # this is a relative path, try to delete the object
+        print("S5 not supporting this feature yet")
+        return SUCCESS
+    elif len(arglist) == 2:  # in the format of bucket:objectname
+        try:
+            # this is a absolute path
+            my_bucket_name = arglist[0]
+            my_object_name = arglist[1]
+            obj = resource.Object(my_bucket_name, my_object_name)
+            # client code handle the no such key exception, this is the trick to check if a object is present.
+            client.get_object(Bucket=my_bucket_name, Key=my_object_name)
+            obj.delete()
+            return SUCCESS
+        except client.exceptions.NoSuchKey as e:
+            print(colored(
+                "S5 Error: The object " + my_object_name + " does not exist. \nPlease see the error message below:",
+                "red"))
+            print(e)
+            return UNSUCCESS
+        except BaseException as e:
+            print(colored("S5 Error: Cannot perform delete! Please see the error message below:", "red"))
+            print(e)
+            return UNSUCCESS
+
+    else:
+        print(colored("S5 Error: ", args, " is not a valid command.", "red"))
+        return UNSUCCESS
+
+
 def do_delete_bucket(args: str) -> int:
     try:
         response = client.delete_bucket(Bucket=args, )
@@ -204,22 +345,290 @@ def do_delete_bucket(args: str) -> int:
         return UNSUCCESS
 
 
-def do_list(input=""):
-    # list all the buckets at the root of the S3
-    if input == "/":
+# for a bucketName and a pathName, print all the Absolute keys for objects
+def __get_all_keys(bucketName, pathName):
+    result = []
+    # if inside of a folder
+    if bucketName and pathName:
+        try:
+            bucket = resource.Bucket(bucketName)
+            result = []
+
+            for object_summary in bucket.objects.filter(Prefix=pathName):
+                myStrkey = object_summary.key[len(pathName):]
+                num_of_slash = myStrkey.count('/')
+                # only print the items with Zero slash or 1 slash at the end
+                if num_of_slash == 0 or (num_of_slash == 1 and myStrkey[-1] == "/"):
+                    if myStrkey: result.append(object_summary.key)
+            return result
+        except BaseException as e:
+            print(e)
+            return ["UNSUCCESS"]
+    # if inside of a bucket:
+    if bucketName:
+        bucket = resource.Bucket(bucketName)
+        try:
+            result = []
+            for file in bucket.objects.all():
+                myStrkey = file.key
+                num_of_slash = myStrkey.count('/')
+                # only print the items with Zero slash or 1 slash at the end
+                if num_of_slash == 0 or (num_of_slash == 1 and myStrkey[-1] == "/"):
+                    if myStrkey: result.append(myStrkey)
+            return result
+        except BaseException as e:
+            print(e)
+            return ["UNSUCCESS"]
+
+    return result
+
+
+# return true if a bucketname and pathname is valid to visit
+def __validate_a_path(bucketName, pathName) -> bool:
+    if bucketName == "":
+        print("No bucket name defined!")
+        return False
+    if pathName == "":
+        try:
+            fullPath = bucketName
+            errorMessage = "\nThe input bucket " + fullPath + " does not exist!"
+            bucket = resource.meta.client.head_bucket(Bucket=bucketName)
+            return True
+        except BaseException as e:
+            print(
+                colored("S5 Error: Bucket Name invalid: " + bucketName + errorMessage,
+                        "red"))
+            print(e)
+            return False
+        # validate bucketName
+    else:
+        try:  # validate the full path
+            fullPath = bucketName + ": " + pathName
+            errorMessage = "\nThe input folder " + fullPath + " does not exist!"
+            item = resource.Object(bucketName, pathName).get()
+            return True
+        except BaseException as e:
+            print(
+                colored("S5 Error: Object Not Exist: " + fullPath + errorMessage,
+                        "red"))
+            print(e)
+            return False
+
+
+# resolve a relative path
+def __reslove_a_path(args: str):
+    if args == "":
+        return args
+
+    # add a slash at the end
+    if args[-1] != "/":
+        args += "/"
+
+    folder_list = args.split("/")
+    result = []
+
+    # handle the cases where ".." is in the path
+    for i in folder_list:
+        if i == ".":
+            pass
+        if i != "..":
+            result.append(i)
+        if i == ".." and result:
+            result.pop()
+
+    args = "/".join(result)
+    return args
+
+
+def do_test(args: str):
+    global s3_working_directory
+    global s3_bucket_name
+    # l = __get_all_keys("cis4010-ymei","")
+    # print(l)
+    # print ("=================")
+    bucketName = "cis4010b01"
+    pathName = ""
+    mykeys = __get_all_keys(bucketName, pathName)
+    print(mykeys)
+    data = []
+    for k in mykeys:
+        try:
+            object = resource.Object(bucketName, "../").get()
+            print(object)
+        except BaseException as e:
+            print(e)
+    #     d = [str(object["ContentLength"]), k[len(s3_working_directory):], str(object["LastModified"])]
+    #     data.append(d)
+    # if data: print(tabulate(data, headers=["Size", "Name", "Last_Modified_Date"]))
+
+
+def do_list(args: str):
+    # remove the leading and ending spaces
+    args = args.strip()
+
+    if not args:
+        return do_short_list("")
+    arg_list = args.split(" ")
+    if (len(args) >= 2 and args[:2] == "-l"):  # if args == "-l bucket:folderbalabala"
+        args = args[2:].strip()
+        return do_long_list(args)
+    else:  # if args = "bucket:folderbalabala
+        args = args
+        return do_short_list(args)
+
+
+def do_long_list(args: str):
+    global s3_working_directory
+    global s3_bucket_name
+    # if we need to print long ls at the root
+    if args == "/":
         response = client.list_buckets()["Buckets"]
         for i, r in enumerate(response):
             print(i + 1, ": ", r["Name"])
-    # list all the files under the current local directory
-    if input == "" or input == "-l":
-        if running_platform == "Windows":
-            if input == "":
-                myinput = "/b"
-            if input == "-l":
-                myinput = "/x /l"
-            os.system("dir " + myinput)
+        return SUCCESS
+
+    # if we are going to printout the long ls at the current folder:
+    if args == "":
+        if s3_bucket_name == "" and s3_working_directory == "":
+            return do_short_list("/")
+        mykeys = __get_all_keys(s3_bucket_name, s3_working_directory)
+        if len(mykeys) == 1 and mykeys[0] == "UNSUCCESS":
+            print(colored("S5 Error: can not find information for the dir:" + s3_working_directory, "red"))
+            return UNSUCCESS
         else:
-            os.system("ls" + input)
+            data = []
+            for k in mykeys:
+                object = resource.Object(s3_bucket_name, k).get()
+                d = [str(object["ContentLength"]), k[len(s3_working_directory):], str(object["LastModified"])]
+                data.append(d)
+            if data: print(tabulate(data, headers=["Size", "Name", "Last_Modified_Date"]))
+            return SUCCESS
+
+    # if user specified a bucket name with (or without a path)
+    if args:
+        arg_list = args.split(":", 1)
+        bucketName = arg_list[0]
+        if len(arg_list) == 1:
+            pathName = ""
+        else:
+            pathName = arg_list[1]
+            # transform the pathNama here:
+        pathName = __reslove_a_path(pathName)
+
+        if not __validate_a_path(bucketName, pathName):  # if the path is not valid, return false
+            return UNSUCCESS
+
+        mykeys = __get_all_keys(bucketName, pathName)
+        if len(mykeys) == 1 and mykeys[0] == "UNSUCCESS":
+            print(colored("S5 Error: can not find information for the dir:" + pathName, "red"))
+            return UNSUCCESS
+        else:
+            data = []
+            for k in mykeys:
+                object = resource.Object(bucketName, k).get()
+                d = [str(object["ContentLength"]), k[len(pathName):], str(object["LastModified"])]
+                data.append(d)
+            if data: print(tabulate(data, headers=["Size", "Name", "Last_Modified_Date"]))
+            return SUCCESS
+
+
+
+def do_short_list(args: str):
+    global s3_working_directory
+    global s3_bucket_name
+
+    # list all the buckets at the root of the S3
+    if args == "/":
+        response = client.list_buckets()["Buckets"]
+        for i, r in enumerate(response):
+            print(i + 1, ": ", r["Name"])
+        return SUCCESS
+    # list all the files under the current local directory
+    # this is wrong, I should list all the object in the current s3 directroy
+    if args == "":
+        if s3_bucket_name == "" and s3_working_directory == "":
+            return do_short_list("/")
+        # if currently in a folder, print the content of the folder
+        if s3_working_directory and s3_bucket_name:
+            try:
+                bucket = resource.Bucket(s3_bucket_name)
+                result = []
+
+                for object_summary in bucket.objects.filter(Prefix=s3_working_directory):
+                    myStrkey = object_summary.key[len(s3_working_directory):]
+                    num_of_slash = myStrkey.count('/')
+                    # only print the items with Zero slash or 1 slash at the end
+                    if num_of_slash == 0 or (num_of_slash == 1 and myStrkey[-1] == "/"):
+                        if myStrkey: result.append(myStrkey)
+                if result: print("    ".join(result))
+                return SUCCESS
+            except BaseException as e:
+                print(e)
+                return UNSUCCESS
+
+        # if currently in a bucket, print the content of the bucket
+        if s3_bucket_name:
+            bucket = resource.Bucket(s3_bucket_name)
+            try:
+                result = []
+                for file in bucket.objects.all():
+                    myStrkey = file.key
+                    num_of_slash = myStrkey.count('/')
+                    # only print the items with Zero slash or 1 slash at the end
+                    if num_of_slash == 0 or (num_of_slash == 1 and myStrkey[-1] == "/"):
+                        if myStrkey: result.append(myStrkey)
+                if result: print("    ".join(result))
+                return SUCCESS
+            except BaseException as e:
+                print(e)
+                return UNSUCCESS
+    # if user specified a bucket name with (or without a path)
+    if args:
+        arg_list = args.split(":", 1)
+        bucketName = arg_list[0]
+        if len(arg_list) == 1:
+            pathName = ""
+        else:
+            pathName = arg_list[1]
+            # transform the pathNama here:
+        pathName = __reslove_a_path(pathName)
+
+        if not __validate_a_path(bucketName, pathName):  # if the path is not valid, return false
+            return UNSUCCESS
+
+        if pathName and bucketName:
+            try:
+                bucket = resource.Bucket(bucketName)
+                result = []
+
+                for object_summary in bucket.objects.filter(Prefix=pathName):
+                    myStrkey = object_summary.key[len(pathName):]
+                    num_of_slash = myStrkey.count('/')
+                    # only print the items with Zero slash or 1 slash at the end
+                    if num_of_slash == 0 or (num_of_slash == 1 and myStrkey[-1] == "/"):
+                        if myStrkey: result.append(myStrkey)
+                if result: print("    ".join(result))
+                return SUCCESS
+            except BaseException as e:
+                print(e)
+                return UNSUCCESS
+
+            # if currently in a bucket, print the content of the bucket
+        if bucketName:
+            bucket = resource.Bucket(bucketName)
+            try:
+                result = []
+                for file in bucket.objects.all():
+                    myStrkey = file.key
+                    num_of_slash = myStrkey.count('/')
+                    # only print the items with Zero slash or 1 slash at the end
+                    if num_of_slash == 0 or (num_of_slash == 1 and myStrkey[-1] == "/"):
+                        if myStrkey: result.append(myStrkey)
+                if result: print("    ".join(result))
+                return SUCCESS
+            except BaseException as e:
+                print(e)
+                return UNSUCCESS
 
 
 def do_quit(*args):
@@ -239,16 +648,10 @@ dispatch = {
     "delete_bucket": do_delete_bucket,
     "q": do_quit,
     "cwf": do_current_work_folder,
-    "cf": do_change_directory,
+    "cf": do_change_folder,
+    "cdelete": do_delete_object,
+    "t": do_test,
 }
-
-# detected the current running environment
-running_platform = platform.system()
-print(running_platform)
-# detect the current local working directory
-local_working_directory = os.getcwd()
-s3_working_directory = "/"
-print(local_working_directory)
 
 while True:
 
@@ -271,8 +674,9 @@ while True:
         try:
             if os.system(user_input) != 0:
                 raise Exception("this command does not exist")
-        except:
-            print("S5 shell had some problem to run this command:")
+        except BaseException as e:
+            print("S5 Error: Please see the error message below:")
+            print(colored(e, "red"))
     # if we have a def of the command already, then dispatch it from the dict.
     else:
         # if it is available, then we dispatch the command
