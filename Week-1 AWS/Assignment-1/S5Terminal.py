@@ -302,7 +302,7 @@ def do_create_bucket(args: str) -> int:
 
 def do_delete_object(args: str) -> int:
     # need to support delete on full path and indirect pathname
-    arglist = args.split(":")
+    arglist = args.split(":",1)
 
     if (len(arglist) == 1):
         # this is a relative path, try to delete the object
@@ -414,6 +414,36 @@ def __validate_a_path(bucketName, pathName) -> bool:
             print(e)
             return False
 
+# return true if a bucketname or a pathname is present
+def __present_of_a_path(bucketName, pathName) -> bool:
+    if bucketName == "":
+        # print("No bucket name defined!")
+        return False
+    if pathName == "":
+        try:
+            fullPath = bucketName
+            errorMessage = "\nThe input bucket " + fullPath + " does not exist!"
+            bucket = resource.meta.client.head_bucket(Bucket=bucketName)
+            return True
+        except BaseException as e:
+            # print(
+            #     colored("S5 Error: Bucket Name invalid: " + bucketName + errorMessage,
+            #             "red"))
+            # print(e)
+            return False
+        # validate bucketName
+    else:
+        try:  # validate the full path
+            fullPath = bucketName + ": " + pathName
+            errorMessage = "\nThe input folder " + fullPath + " does not exist!"
+            item = resource.Object(bucketName, pathName).get()
+            return True
+        except BaseException as e:
+            # print(
+            #     colored("S5 Error: Object Not Exist: " + fullPath + errorMessage,
+            #             "red"))
+            # print(e)
+            return False
 
 # resolve a relative path
 def __reslove_a_path(args: str):
@@ -446,17 +476,27 @@ def do_test(args: str):
     # l = __get_all_keys("cis4010-ymei","")
     # print(l)
     # print ("=================")
-    bucketName = "cis4010b01"
+    # bucketName = "cis4010-rwiskail"
+    # bucket = resource.Bucket(bucketName)
+    # for item in bucket.objects.all():
+    #     print(item)
+
+
     pathName = ""
+    bucketName = "cis4010b01"
     mykeys = __get_all_keys(bucketName, pathName)
     print(mykeys)
     data = []
-    for k in mykeys:
-        try:
-            object = resource.Object(bucketName, "../").get()
-            print(object)
-        except BaseException as e:
-            print(e)
+
+
+    # for k in mykeys:
+    #     try:
+    #         # object = resource.Object(bucketName, "../").get()
+    #         # print(object)
+    #         response = client.get_object(Bucket=bucketName, Key="../")
+    #         print(response)
+    #     except BaseException as e:
+    #         print(e)
     #     d = [str(object["ContentLength"]), k[len(s3_working_directory):], str(object["LastModified"])]
     #     data.append(d)
     # if data: print(tabulate(data, headers=["Size", "Name", "Last_Modified_Date"]))
@@ -498,9 +538,12 @@ def do_long_list(args: str):
         else:
             data = []
             for k in mykeys:
-                object = resource.Object(s3_bucket_name, k).get()
-                d = [str(object["ContentLength"]), k[len(s3_working_directory):], str(object["LastModified"])]
-                data.append(d)
+                if k =="../":
+                    pass # this is a bug in AWS
+                else:
+                    object = resource.Object(s3_bucket_name, k).get()
+                    d = [str(object["ContentLength"]), k[len(s3_working_directory):], str(object["LastModified"])]
+                    data.append(d)
             if data: print(tabulate(data, headers=["Size", "Name", "Last_Modified_Date"]))
             return SUCCESS
 
@@ -525,9 +568,12 @@ def do_long_list(args: str):
         else:
             data = []
             for k in mykeys:
-                object = resource.Object(bucketName, k).get()
-                d = [str(object["ContentLength"]), k[len(pathName):], str(object["LastModified"])]
-                data.append(d)
+                if k =="../":
+                    pass # this is a bug in AWS
+                else:
+                    object = resource.Object(bucketName, k).get()
+                    d = [str(object["ContentLength"]), k[len(pathName):], str(object["LastModified"])]
+                    data.append(d)
             if data: print(tabulate(data, headers=["Size", "Name", "Last_Modified_Date"]))
             return SUCCESS
 
@@ -631,6 +677,96 @@ def do_short_list(args: str):
                 return UNSUCCESS
 
 
+def do_create_folder(args:str):
+
+    global s3_working_directory
+    global s3_bucket_name
+
+    if args == "":
+        print(colored("S5 Error: The args for this command can not be null!","red"))
+        return UNSUCCESS
+    # if args is not none, we have to seperate full path or relatrive path:
+    args_list = args.split(":",1)
+
+    if len(args_list) > 1: # if this is the full path with bucket name
+        bucketName = args_list[0]
+        pathName = args_list[1]
+
+        # put a slash at the end of the path name and validate a path
+        pathName = __reslove_a_path(pathName)
+
+        # pathName should not be none
+        if pathName =="":
+            print(colored("S5 Error: Can not create folder due to Folder Name is Null!", "red"))
+            return UNSUCCESS
+
+        # the bucket should present
+        if not __present_of_a_path(bucketName,""):
+            print(colored("S5 Error: Can not create folder due to bucket not exist!", "red"))
+            return UNSUCCESS
+        # the folder should not be present
+        if __present_of_a_path(bucketName, pathName):
+            print(colored("S5 Error: Can not create folder due to File Already Exists!", "red"))
+            return UNSUCCESS
+        # everything good, we are going to create a object
+        try:
+            # actually, I can not directly put the object here, I have to do this folder by folder
+            pathList = pathName.split("/")
+            __create_folder_helper(bucketName,pathList)
+            # response = client.put_object(Bucket =bucketName, Key =  pathName)
+            return SUCCESS
+        except BaseException as e:
+            print(colored("S5 Error: Can not create folder.", "red"))
+            print(e)
+            return UNSUCCESS
+
+    else:                  # if this is just the folder path without bucket name
+        bucketName = s3_bucket_name
+        # put a slash at the end of the path name and validate a path
+        pathName = s3_working_directory +args_list[0]
+        pathName = __reslove_a_path(pathName)
+
+        # pathName should not be none
+        if pathName == "":
+            print(colored("S5 Error: Can not create folder due to Folder Name is Null!", "red"))
+            return UNSUCCESS
+            # the bucket should present
+        if not __present_of_a_path(bucketName, ""):
+            print(colored("S5 Error: Can not create folder due to bucket not exist!", "red"))
+            return UNSUCCESS
+            # the folder should not be present
+        if __present_of_a_path(bucketName, pathName):
+            print(colored("S5 Error: Can not create folder due to File Already Exists!", "red"))
+            return UNSUCCESS
+            # everything good, we are going to create a object
+        try:
+            # actually, I can not directly put the object here, I have to do this folder by folder
+            pathList = pathName.split("/")
+            __create_folder_helper(bucketName, pathList)
+            # response = client.put_object(Bucket=bucketName, Key=pathName)
+            return SUCCESS
+        except BaseException as e:
+            print(colored("S5 Error: Can not create folder.", "red"))
+            print(e)
+            return UNSUCCESS
+
+# recursively create intermediate folders along the path of a list of path names
+def __create_folder_helper(bucketName, pathNameList):
+    base = ""
+    for name in pathNameList:
+        name = name+"/"
+        base += name
+        if __present_of_a_path(bucketName, base):
+            pass
+        else:
+            try:
+                client.put_object(Bucket=bucketName, Key=base)
+            except:
+                raise RuntimeError(" In Valid PathName List" + str(pathNameList))
+
+
+
+
 def do_quit(*args):
     print("Exiting the S5 Shell Program Now...")
     print("Thank you for using S5, See you next time!")
@@ -651,6 +787,7 @@ dispatch = {
     "cf": do_change_folder,
     "cdelete": do_delete_object,
     "t": do_test,
+    "create_folder": do_create_folder,
 }
 
 while True:
