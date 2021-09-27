@@ -301,36 +301,60 @@ def do_create_bucket(args: str) -> int:
 
 
 def do_delete_object(args: str) -> int:
+    global s3_working_directory
+    global s3_bucket_name
+
+    # If no argument, report as error
+    if not args:
+        print(colored("cdelete command need a full or indirect pathname of object as argument ", "red"))
+        return UNSUCCESS
+
     # need to support delete on full path and indirect pathname
-    arglist = args.split(":",1)
+    arglist = args.split(":", 1)
 
     if (len(arglist) == 1):
         # this is a relative path, try to delete the object
-        print("S5 not supporting this feature yet")
-        return SUCCESS
-    elif len(arglist) == 2:  # in the format of bucket:objectname
-        try:
-            # this is a absolute path
-            my_bucket_name = arglist[0]
-            my_object_name = arglist[1]
-            obj = resource.Object(my_bucket_name, my_object_name)
-            # client code handle the no such key exception, this is the trick to check if a object is present.
-            client.get_object(Bucket=my_bucket_name, Key=my_object_name)
-            obj.delete()
-            return SUCCESS
-        except client.exceptions.NoSuchKey as e:
-            print(colored(
-                "S5 Error: The object " + my_object_name + " does not exist. \nPlease see the error message below:",
-                "red"))
-            print(e)
-            return UNSUCCESS
-        except BaseException as e:
-            print(colored("S5 Error: Cannot perform delete! Please see the error message below:", "red"))
-            print(e)
-            return UNSUCCESS
+        my_bucket_name = s3_bucket_name
+        my_object_name = s3_working_directory + arglist[0]
+        my_object_name = __reslove_a_path(my_object_name)
 
+    elif len(arglist) == 2:  # in the format of bucket:objectname
+        # this is a absolute path
+        my_bucket_name = arglist[0]
+        my_object_name = arglist[1]
+        my_object_name = __reslove_a_path(my_object_name)
     else:
         print(colored("S5 Error: ", args, " is not a valid command.", "red"))
+        return UNSUCCESS
+
+    # check if the object is present, and then check if the folder is empty, if both true, then delete it
+    try:
+        obj = resource.Object(my_bucket_name, my_object_name)
+        # client code handle the no such key exception, this is the trick to check if a object is present.
+        client.get_object(Bucket=my_bucket_name, Key=my_object_name)
+        # also need to check if this object is empty!!!
+        bucket = resource.Bucket(my_bucket_name)
+        object_list = []
+        for object_summary in bucket.objects.filter(Prefix=my_object_name):
+            print(object_summary)
+            object_list.append(object_summary)
+            if len(object_list) > 1:
+                print(colored(
+                    "S5 Error: The folder " + my_object_name + " is not empty so we can not delete it.",
+                    "red"))
+                return UNSUCCESS
+        # obj.delete()
+        print(colored(" I can delete the folder" + my_object_name, "green"))
+        return SUCCESS
+    except client.exceptions.NoSuchKey as e:
+        print(colored(
+            "S5 Error: The object " + my_object_name + " does not exist. \nPlease see the error message below:",
+            "red"))
+        print(e)
+        return UNSUCCESS
+    except BaseException as e:
+        print(colored("S5 Error: Cannot perform delete! Please see the error message below:", "red"))
+        print(e)
         return UNSUCCESS
 
 
@@ -414,6 +438,7 @@ def __validate_a_path(bucketName, pathName) -> bool:
             print(e)
             return False
 
+
 # return true if a bucketname or a pathname is present
 def __present_of_a_path(bucketName, pathName) -> bool:
     if bucketName == "":
@@ -445,13 +470,18 @@ def __present_of_a_path(bucketName, pathName) -> bool:
             # print(e)
             return False
 
-# resolve a relative path
-def __reslove_a_path(args: str):
+
+# resolve a relative path, and if needed, we add a ending slash at the end of the output path
+# note that in S3, all the folder object is ending with / but file object does not ending with /
+def __reslove_a_path(args: str, addEndingSlash=True):
     if args == "":
         return args
 
-    # add a slash at the end
-    if args[-1] != "/":
+    # remove the leading and ending spaces
+    args = args.strip()
+
+    # add a slash at the end if addEndingSlash is True
+    if addEndingSlash and args[-1] != "/":
         args += "/"
 
     folder_list = args.split("/")
@@ -481,13 +511,11 @@ def do_test(args: str):
     # for item in bucket.objects.all():
     #     print(item)
 
-
     pathName = ""
     bucketName = "cis4010b01"
     mykeys = __get_all_keys(bucketName, pathName)
     print(mykeys)
     data = []
-
 
     # for k in mykeys:
     #     try:
@@ -538,8 +566,8 @@ def do_long_list(args: str):
         else:
             data = []
             for k in mykeys:
-                if k =="../":
-                    pass # this is a bug in AWS
+                if k == "../":
+                    pass  # this is a bug in AWS
                 else:
                     object = resource.Object(s3_bucket_name, k).get()
                     d = [str(object["ContentLength"]), k[len(s3_working_directory):], str(object["LastModified"])]
@@ -568,15 +596,14 @@ def do_long_list(args: str):
         else:
             data = []
             for k in mykeys:
-                if k =="../":
-                    pass # this is a bug in AWS
+                if k == "../":
+                    pass  # this is a bug in AWS
                 else:
                     object = resource.Object(bucketName, k).get()
                     d = [str(object["ContentLength"]), k[len(pathName):], str(object["LastModified"])]
                     data.append(d)
             if data: print(tabulate(data, headers=["Size", "Name", "Last_Modified_Date"]))
             return SUCCESS
-
 
 
 def do_short_list(args: str):
@@ -677,18 +704,17 @@ def do_short_list(args: str):
                 return UNSUCCESS
 
 
-def do_create_folder(args:str):
-
+def do_create_folder(args: str):
     global s3_working_directory
     global s3_bucket_name
 
     if args == "":
-        print(colored("S5 Error: The args for this command can not be null!","red"))
+        print(colored("S5 Error: The args for this command can not be null!", "red"))
         return UNSUCCESS
     # if args is not none, we have to seperate full path or relatrive path:
-    args_list = args.split(":",1)
+    args_list = args.split(":", 1)
 
-    if len(args_list) > 1: # if this is the full path with bucket name
+    if len(args_list) > 1:  # if this is the full path with bucket name
         bucketName = args_list[0]
         pathName = args_list[1]
 
@@ -696,12 +722,12 @@ def do_create_folder(args:str):
         pathName = __reslove_a_path(pathName)
 
         # pathName should not be none
-        if pathName =="":
+        if pathName == "":
             print(colored("S5 Error: Can not create folder due to Folder Name is Null!", "red"))
             return UNSUCCESS
 
         # the bucket should present
-        if not __present_of_a_path(bucketName,""):
+        if not __present_of_a_path(bucketName, ""):
             print(colored("S5 Error: Can not create folder due to bucket not exist!", "red"))
             return UNSUCCESS
         # the folder should not be present
@@ -712,7 +738,7 @@ def do_create_folder(args:str):
         try:
             # actually, I can not directly put the object here, I have to do this folder by folder
             pathList = pathName.split("/")
-            __create_folder_helper(bucketName,pathList)
+            __create_folder_helper(bucketName, pathList)
             # response = client.put_object(Bucket =bucketName, Key =  pathName)
             return SUCCESS
         except BaseException as e:
@@ -720,10 +746,10 @@ def do_create_folder(args:str):
             print(e)
             return UNSUCCESS
 
-    else:                  # if this is just the folder path without bucket name
+    else:  # if this is just the folder path without bucket name
         bucketName = s3_bucket_name
         # put a slash at the end of the path name and validate a path
-        pathName = s3_working_directory +args_list[0]
+        pathName = s3_working_directory + args_list[0]
         pathName = __reslove_a_path(pathName)
 
         # pathName should not be none
@@ -750,11 +776,12 @@ def do_create_folder(args:str):
             print(e)
             return UNSUCCESS
 
+
 # recursively create intermediate folders along the path of a list of path names
 def __create_folder_helper(bucketName, pathNameList):
     base = ""
     for name in pathNameList:
-        name = name+"/"
+        name = name + "/"
         base += name
         if __present_of_a_path(bucketName, base):
             pass
@@ -763,8 +790,6 @@ def __create_folder_helper(bucketName, pathNameList):
                 client.put_object(Bucket=bucketName, Key=base)
             except:
                 raise RuntimeError(" In Valid PathName List" + str(pathNameList))
-
-
 
 
 def do_quit(*args):
