@@ -11,6 +11,7 @@ from colorama import init
 from termcolor import colored
 import requests
 from tabulate import tabulate
+from shlex import split as shlexsplit
 from pathlib import Path
 
 # use Colorama to make Termcolor work on Windows too
@@ -299,8 +300,142 @@ def do_create_bucket(args: str) -> int:
     #     print(colored("S5 Error: Can not create the bucket: " + args, "red"))
     #     return UNSUCCESS
 
+def do_delete_bucket(args: str) -> int:
+    global s3_working_directory
+    global s3_bucket_name
+    # you can not delete the bucket you are currently in
+    if args == s3_bucket_name:
+        print(colored("Can not delete the bucket, please see the exception message below:", "red"))
+        print(colored("You cannot delete the bucket that you are currently in, please ch_folder /, then repeat the "
+                      "delete_bucket command", "red"))
+        return UNSUCCESS
+    try:
+        response = client.delete_bucket(Bucket=args, )
+        print(colored("Bucket: " + args + ", has been successfully deleted.", "green"))
+        return SUCCESS
+    except BaseException as e:
+        print(colored("Can not delete the bucket, please see the exception message below:", "red"))
+        print(e)
+        return UNSUCCESS
+
+    # for the purpose of this assignement, let us assume there is no space in pathname
+def do_copy_object(args:str) ->int:
+    # will not work for object contains a ":" in its pathName
+    global s3_working_directory
+    global s3_bucket_name
+    # fromPathName = ""
+    # toPathName = ""
+    # fromBucketName = ""
+    # toBucketName = ""
+
+
+    # If no argument, report as error
+    if not args:
+        print(colored("ccopy command need two full or indirect pathname as arguments ", "red"))
+        return UNSUCCESS
+
+    # need to support delete on full path and indirect pathname
+    args = args.strip()
+    arglist = __split_args__(args) # use this helper function to handle the case if input has ""
+    if len(arglist) != 2:
+        print(colored("ccopy command need exactly two full or indirect pathname as arguments ", "red"))
+        print(colored("But "+str(len(arglist))+" is given:", "red"))
+        print(colored(arglist,"red"))
+        return UNSUCCESS
+
+    # seperate two path an get the 4 names:
+    fromPath = arglist[0]
+    toPath = arglist[1]
+    # print (fromPath)
+    # print (toPath)
+    if len(fromPath.split(":",1)) == 1: # if no bucket Name
+        if not s3_bucket_name:
+            print(colored("ccopy error: no 'source bucket' name defined", "red"))
+            print(colored("Give the source a full path with bucketname or ch_folder to a bucket before ccopy", "red"))
+            return UNSUCCESS
+        fromBucketName = s3_bucket_name
+        fromPathName = s3_working_directory+fromPath.split(":")[0]
+    elif len(fromPath.split(":",1)) == 2: # if has bucket Name
+        fromBucketName = fromPath.split(":",1)[0]
+        fromPathName = fromPath.split(":",1)[1]
+    else:
+        mylist = fromPath.split(":",1)
+        print(colored("ccopy command need the correct source bucket name and file path name", "red"))
+        print(colored("Give the source a full path with bucketname or ch_folder to a bucket before ccopy", "red"))
+        print(colored(mylist, "red"))
+        return UNSUCCESS
+
+
+
+    if len(toPath.split(":",1)) == 1: # if no bucket Name
+        if not s3_bucket_name:
+            print(colored("ccopy error: no 'destination bucket' name defined", "red"))
+            print(colored("Give the destination a full path with bucketname or ch_folder to a bucket before ccopy", "red"))
+            return UNSUCCESS
+        toBucketName = s3_bucket_name
+        toPathName = s3_working_directory+toPath.split(":",1)[0]
+    elif len(toPath.split(":",1)) == 2: # if has bucket Name
+        toBucketName = toPath.split(":",1)[0]
+        toPathName = toPath.split(":",1)[1]
+    else:
+        mylist = toPath.split(":",1)
+        print(colored("ccopy command need the correct destination bucket name and file path name", "red"))
+        print(colored("Give the destination a full path with bucketname or ch_folder to a bucket before ccopy", "red"))
+        print(colored(mylist, "red"))
+        return UNSUCCESS
+
+    # now resolve all the file path names:
+    # they can not be ended with "/" because they are not folders
+    if fromPathName and fromPathName[-1]=="/":
+        print(colored("ccopy of a Folder is not supported according to assignment-1 requirements, the source must be "
+                      "a file object not a folder", "red"))
+        return UNSUCCESS
+    if toPathName and toPathName[-1]=="/":
+        print(colored("ccopy to a Folder is not supported according to assignment-1 requirements, you need to give "
+                      "destination object a name", "red"))
+        return UNSUCCESS
+
+    # the source must exist
+    fromPathName = __reslove_a_path(fromPathName, False)
+    toPathName = __reslove_a_path(toPathName, False)
+
+    if not __present_of_a_path(fromBucketName, fromPathName):
+        print(colored("ccopy error, source file does not exist", "red"))
+        return UNSUCCESS
+
+    # and the destination must not exist
+    if __present_of_a_path(toBucketName, toPathName):
+        print(colored("ccopy error, destination file already exist", "red"))
+        return UNSUCCESS
+
+    ################# up to here, I have 2 valid bucket name and 2 valid pathname####################
+    return do_copy_object_need_a_warpper(fromBucketName, fromPathName, toBucketName, toPathName)
+
+
+
+def do_copy_object_need_a_warpper(fromBucketName,fromPathName, toBucketName, toPathName):
+    # I have to assume the two inputs are valid and not null
+    # I have to also assume that both of them are full path including bucketName
+    copy_source = {
+        'Bucket': fromBucketName,
+        'Key': fromPathName
+    }
+
+    try:
+        resource.meta.client.copy(copy_source, toBucketName, toPathName)
+        # or you can also use just the resource to copy item
+        # bucket = resource.Bucket(toBucketName)
+        # bucket.copy(copy_source, toPathName)
+        return SUCCESS
+    except BaseException as e:
+        print(colored("Can not perform the copy operation, please see the error message below:","red"))
+        print(e)
+        return UNSUCCESS
+
+
 
 def do_delete_object(args: str) -> int:
+    # will not work for object contains a ":" in its pathName
     global s3_working_directory
     global s3_bucket_name
 
@@ -316,16 +451,32 @@ def do_delete_object(args: str) -> int:
         # this is a relative path, try to delete the object
         my_bucket_name = s3_bucket_name
         my_object_name = s3_working_directory + arglist[0]
-        my_object_name = __reslove_a_path(my_object_name)
+        my_object_name = __reslove_a_path(my_object_name, False)
 
     elif len(arglist) == 2:  # in the format of bucket:objectname
         # this is a absolute path
         my_bucket_name = arglist[0]
         my_object_name = arglist[1]
-        my_object_name = __reslove_a_path(my_object_name)
+        my_object_name = __reslove_a_path(my_object_name, False)
     else:
         print(colored("S5 Error: ", args, " is not a valid command.", "red"))
         return UNSUCCESS
+    # give a error message if bucket name is none or pathname is none:
+    if not my_bucket_name:
+        print(colored("S5 can not delete the file due to no bucket name is defined,\nYou need to be in a bucket or "
+                      "give the full path including the bucket name!", "red"))
+        return UNSUCCESS
+    if not my_object_name:
+        print(colored("S5 can not delete the file due to no path name is defined!", "red"))
+        return UNSUCCESS
+
+    # give user a warning that cdelete command will treat everything as a file object, if you want to delete
+    # a directory, make sure you end the pathname with a forward slash
+    if my_object_name and my_object_name[-1]!="/":
+        print(colored("================ WARNING ================", "blue"))
+        print(colored("S5 will treat all the pathname input without the ending '/' as the pathname of a FILE,\n"+
+                      "If you are trying to delete a FOLDER, you MUST end the pathname input with a '/'", "blue"))
+        print(colored("=========================================", "blue"))
 
     # check if the object is present, and then check if the folder is empty, if both true, then delete it
     try:
@@ -336,15 +487,15 @@ def do_delete_object(args: str) -> int:
         bucket = resource.Bucket(my_bucket_name)
         object_list = []
         for object_summary in bucket.objects.filter(Prefix=my_object_name):
-            print(object_summary)
+            # print(object_summary)
             object_list.append(object_summary)
             if len(object_list) > 1:
                 print(colored(
                     "S5 Error: The folder " + my_object_name + " is not empty so we can not delete it.",
                     "red"))
                 return UNSUCCESS
-        # obj.delete()
-        print(colored(" I can delete the folder" + my_object_name, "green"))
+        obj.delete()
+        print(colored(" The object " + my_object_name + " has been deleted", "green"))
         return SUCCESS
     except client.exceptions.NoSuchKey as e:
         print(colored(
@@ -358,15 +509,7 @@ def do_delete_object(args: str) -> int:
         return UNSUCCESS
 
 
-def do_delete_bucket(args: str) -> int:
-    try:
-        response = client.delete_bucket(Bucket=args, )
-        print(colored("Bucket: " + args + ", has been successfully deleted.", "green"))
-        return SUCCESS
-    except BaseException as e:
-        print(colored("Can not delete the bucket, please see the exception message below:", "red"))
-        print(e)
-        return UNSUCCESS
+
 
 
 # for a bucketName and a pathName, print all the Absolute keys for objects
@@ -406,6 +549,68 @@ def __get_all_keys(bucketName, pathName):
 
     return result
 
+
+# for a bucketName and a pathName, print all the Absolute keys for objects
+# This is nor required by the assignment, I can delete this latter
+def __print_all_keys_for_debug_(bucketName, pathName):
+    result = []
+    # if inside of a folder
+    if bucketName and pathName:
+        try:
+            bucket = resource.Bucket(bucketName)
+            result = []
+
+            for object_summary in bucket.objects.filter(Prefix=pathName):
+                myStrkey = object_summary.key[len(pathName):] # get the key after the pathName
+                num_of_slash = myStrkey.count('/')
+                # only print the items with Zero slash or 1 slash at the end
+                if num_of_slash == 0 or (num_of_slash == 1 and myStrkey[-1] == "/"):
+                    if myStrkey: result.append(object_summary.key)
+            for i in result:
+                print (i)
+            return result
+        except BaseException as e:
+            print(e)
+            return ["UNSUCCESS"]
+    # if inside of a bucket:
+    if bucketName:
+        bucket = resource.Bucket(bucketName)
+        try:
+            result = []
+            for file in bucket.objects.all():
+                myStrkey = file.key
+                num_of_slash = myStrkey.count('/')
+                # only print the items with Zero slash or 1 slash at the end
+                if num_of_slash == 0 or (num_of_slash == 1 and myStrkey[-1] == "/"):
+                    if myStrkey: result.append(myStrkey)
+            for i in result:
+                print (i)
+            return result
+        except BaseException as e:
+            print(e)
+            return ["UNSUCCESS"]
+
+    return result
+# for a bucketName and a pathName, print all the Absolute keys for objects
+# This is not required by the assignment, I can delete this latter
+def __print_keys__(args):
+    argsList=args.split(":",1)
+    if len(argsList)!=2:
+        print("You have to use the full path including the bucket name")
+        return UNSUCCESS
+    # remove all the leading and ending spaces
+    bucketName = argsList[0].strip()
+    pathName = argsList[1].strip()
+    pathName = __reslove_a_path(pathName)
+    if not __validate_a_path(bucketName,pathName):
+        return UNSUCCESS
+
+    try:
+        __print_all_keys_for_debug_(bucketName,pathName)
+        return True
+    except BaseException as e:
+        print(e)
+        return False
 
 # return true if a bucketname and pathname is valid to visit
 def __validate_a_path(bucketName, pathName) -> bool:
@@ -499,35 +704,23 @@ def __reslove_a_path(args: str, addEndingSlash=True):
     args = "/".join(result)
     return args
 
+# this is a helper function to split the user input if the user put double quote with the input
+
+def __split_args__(args:str):
+    my_real_command = shlexsplit(args)
+    return my_real_command
 
 def do_test(args: str):
     global s3_working_directory
     global s3_bucket_name
-    # l = __get_all_keys("cis4010-ymei","")
-    # print(l)
-    # print ("=================")
-    # bucketName = "cis4010-rwiskail"
-    # bucket = resource.Bucket(bucketName)
-    # for item in bucket.objects.all():
-    #     print(item)
+    # test for shlex
 
-    pathName = ""
-    bucketName = "cis4010b01"
-    mykeys = __get_all_keys(bucketName, pathName)
-    print(mykeys)
-    data = []
+    from shlex import split as shlexsplit
+    my_real_command = shlexsplit(args)
+    print(my_real_command)
 
-    # for k in mykeys:
-    #     try:
-    #         # object = resource.Object(bucketName, "../").get()
-    #         # print(object)
-    #         response = client.get_object(Bucket=bucketName, Key="../")
-    #         print(response)
-    #     except BaseException as e:
-    #         print(e)
-    #     d = [str(object["ContentLength"]), k[len(s3_working_directory):], str(object["LastModified"])]
-    #     data.append(d)
-    # if data: print(tabulate(data, headers=["Size", "Name", "Last_Modified_Date"]))
+
+
 
 
 def do_list(args: str):
@@ -812,7 +1005,9 @@ dispatch = {
     "cf": do_change_folder,
     "cdelete": do_delete_object,
     "t": do_test,
+    "pkeys":__print_keys__,
     "create_folder": do_create_folder,
+    "ccopy":do_copy_object,
 }
 
 while True:
