@@ -112,7 +112,25 @@ s3_bucket_name = ""
 def do_lc_copy(args: str) -> int:
     """lc_copy <full or relative pathname of local file><bucket name>:<full pathname of S3 object> """
     # seperate the argument by both space and :
-    argsList = re.split(" |:", args)
+    shell_arg_list = shlexsplit(args)
+
+    # use shlex to handle the case if the user input has quotes
+    if len(shell_arg_list) != 2:
+        print(colored("lc_copy need two arguments: the local file path, and the bucketname:full_path_of_S3_object",
+                      "red"))
+        print(colored("but you are giving " + str(len(shell_arg_list)) + " arguments:", "red"))
+        print(colored(shell_arg_list, "red"))
+        return UNSUCCESS
+    print(shell_arg_list)
+
+# I am trying to save my old codes, so I have to use the argList interface, this is just a adapter
+    argsList = []
+    argsList.append(shell_arg_list[0])
+    cloud_argsList = shell_arg_list[1].split(":",1)
+    # argsList = re.split(" |:", args)
+    for i in cloud_argsList:
+        argsList.append(i)
+    print(argsList)
 
     # 0. check if the parameter list has 3 variables
     if len(argsList) != 3:
@@ -157,7 +175,21 @@ def do_lc_copy(args: str) -> int:
 
     # 3. check if we can successfully upload the file to AWS
     try:
+        # need to add a function to add sub-folders along the path
+
+        if pathname3_s3_obj:
+            pathname3_s3_obj_list = pathname3_s3_obj.split("/")
+
+        if pathname3_s3_obj_list[-1] == "": #1/2/3/
+            print("S5 Error: the last part of your input is not a valid file object name: ", "red")
+            print(pathname3_s3_obj_list, "red")
+            return UNSUCCESS
+
+        ### need to do more work from here #####
+
+
         response = client.upload_file(local_file_path, bucket_name, pathname3_s3_obj)
+
         return SUCCESS
     except RuntimeError:
         print("Not able to upload the file:")
@@ -300,6 +332,7 @@ def do_create_bucket(args: str) -> int:
     #     print(colored("S5 Error: Can not create the bucket: " + args, "red"))
     #     return UNSUCCESS
 
+
 def do_delete_bucket(args: str) -> int:
     global s3_working_directory
     global s3_bucket_name
@@ -319,7 +352,9 @@ def do_delete_bucket(args: str) -> int:
         return UNSUCCESS
 
     # for the purpose of this assignement, let us assume there is no space in pathname
-def do_copy_object(args:str) ->int:
+
+
+def do_copy_object(args: str) -> int:
     # will not work for object contains a ":" in its pathName
     global s3_working_directory
     global s3_bucket_name
@@ -328,7 +363,6 @@ def do_copy_object(args:str) ->int:
     # fromBucketName = ""
     # toBucketName = ""
 
-
     # If no argument, report as error
     if not args:
         print(colored("ccopy command need two full or indirect pathname as arguments ", "red"))
@@ -336,11 +370,11 @@ def do_copy_object(args:str) ->int:
 
     # need to support delete on full path and indirect pathname
     args = args.strip()
-    arglist = __split_args__(args) # use this helper function to handle the case if input has ""
+    arglist = __split_args__(args)  # use this helper function to handle the case if input has ""
     if len(arglist) != 2:
         print(colored("ccopy command need exactly two full or indirect pathname as arguments ", "red"))
-        print(colored("But "+str(len(arglist))+" is given:", "red"))
-        print(colored(arglist,"red"))
+        print(colored("But " + str(len(arglist)) + " is given:", "red"))
+        print(colored(arglist, "red"))
         return UNSUCCESS
 
     # seperate two path an get the 4 names:
@@ -348,37 +382,36 @@ def do_copy_object(args:str) ->int:
     toPath = arglist[1]
     # print (fromPath)
     # print (toPath)
-    if len(fromPath.split(":",1)) == 1: # if no bucket Name
+    if len(fromPath.split(":", 1)) == 1:  # if no bucket Name
         if not s3_bucket_name:
             print(colored("ccopy error: no 'source bucket' name defined", "red"))
             print(colored("Give the source a full path with bucketname or ch_folder to a bucket before ccopy", "red"))
             return UNSUCCESS
         fromBucketName = s3_bucket_name
-        fromPathName = s3_working_directory+fromPath.split(":")[0]
-    elif len(fromPath.split(":",1)) == 2: # if has bucket Name
-        fromBucketName = fromPath.split(":",1)[0]
-        fromPathName = fromPath.split(":",1)[1]
+        fromPathName = s3_working_directory + fromPath.split(":")[0]
+    elif len(fromPath.split(":", 1)) == 2:  # if has bucket Name
+        fromBucketName = fromPath.split(":", 1)[0]
+        fromPathName = fromPath.split(":", 1)[1]
     else:
-        mylist = fromPath.split(":",1)
+        mylist = fromPath.split(":", 1)
         print(colored("ccopy command need the correct source bucket name and file path name", "red"))
         print(colored("Give the source a full path with bucketname or ch_folder to a bucket before ccopy", "red"))
         print(colored(mylist, "red"))
         return UNSUCCESS
 
-
-
-    if len(toPath.split(":",1)) == 1: # if no bucket Name
+    if len(toPath.split(":", 1)) == 1:  # if no bucket Name
         if not s3_bucket_name:
             print(colored("ccopy error: no 'destination bucket' name defined", "red"))
-            print(colored("Give the destination a full path with bucketname or ch_folder to a bucket before ccopy", "red"))
+            print(colored("Give the destination a full path with bucketname or ch_folder to a bucket before ccopy",
+                          "red"))
             return UNSUCCESS
         toBucketName = s3_bucket_name
-        toPathName = s3_working_directory+toPath.split(":",1)[0]
-    elif len(toPath.split(":",1)) == 2: # if has bucket Name
-        toBucketName = toPath.split(":",1)[0]
-        toPathName = toPath.split(":",1)[1]
+        toPathName = s3_working_directory + toPath.split(":", 1)[0]
+    elif len(toPath.split(":", 1)) == 2:  # if has bucket Name
+        toBucketName = toPath.split(":", 1)[0]
+        toPathName = toPath.split(":", 1)[1]
     else:
-        mylist = toPath.split(":",1)
+        mylist = toPath.split(":", 1)
         print(colored("ccopy command need the correct destination bucket name and file path name", "red"))
         print(colored("Give the destination a full path with bucketname or ch_folder to a bucket before ccopy", "red"))
         print(colored(mylist, "red"))
@@ -386,11 +419,11 @@ def do_copy_object(args:str) ->int:
 
     # now resolve all the file path names:
     # they can not be ended with "/" because they are not folders
-    if fromPathName and fromPathName[-1]=="/":
+    if fromPathName and fromPathName[-1] == "/":
         print(colored("ccopy of a Folder is not supported according to assignment-1 requirements, the source must be "
                       "a file object not a folder", "red"))
         return UNSUCCESS
-    if toPathName and toPathName[-1]=="/":
+    if toPathName and toPathName[-1] == "/":
         print(colored("ccopy to a Folder is not supported according to assignment-1 requirements, you need to give "
                       "destination object a name", "red"))
         return UNSUCCESS
@@ -412,8 +445,7 @@ def do_copy_object(args:str) ->int:
     return do_copy_object_need_a_warpper(fromBucketName, fromPathName, toBucketName, toPathName)
 
 
-
-def do_copy_object_need_a_warpper(fromBucketName,fromPathName, toBucketName, toPathName):
+def do_copy_object_need_a_warpper(fromBucketName, fromPathName, toBucketName, toPathName):
     # I have to assume the two inputs are valid and not null
     # I have to also assume that both of them are full path including bucketName
     copy_source = {
@@ -428,10 +460,9 @@ def do_copy_object_need_a_warpper(fromBucketName,fromPathName, toBucketName, toP
         # bucket.copy(copy_source, toPathName)
         return SUCCESS
     except BaseException as e:
-        print(colored("Can not perform the copy operation, please see the error message below:","red"))
+        print(colored("Can not perform the copy operation, please see the error message below:", "red"))
         print(e)
         return UNSUCCESS
-
 
 
 def do_delete_object(args: str) -> int:
@@ -472,9 +503,9 @@ def do_delete_object(args: str) -> int:
 
     # give user a warning that cdelete command will treat everything as a file object, if you want to delete
     # a directory, make sure you end the pathname with a forward slash
-    if my_object_name and my_object_name[-1]!="/":
+    if my_object_name and my_object_name[-1] != "/":
         print(colored("================ WARNING ================", "blue"))
-        print(colored("S5 will treat all the pathname input without the ending '/' as the pathname of a FILE,\n"+
+        print(colored("S5 will treat all the pathname input without the ending '/' as the pathname of a FILE,\n" +
                       "If you are trying to delete a FOLDER, you MUST end the pathname input with a '/'", "blue"))
         print(colored("=========================================", "blue"))
 
@@ -507,9 +538,6 @@ def do_delete_object(args: str) -> int:
         print(colored("S5 Error: Cannot perform delete! Please see the error message below:", "red"))
         print(e)
         return UNSUCCESS
-
-
-
 
 
 # for a bucketName and a pathName, print all the Absolute keys for objects
@@ -561,13 +589,13 @@ def __print_all_keys_for_debug_(bucketName, pathName):
             result = []
 
             for object_summary in bucket.objects.filter(Prefix=pathName):
-                myStrkey = object_summary.key[len(pathName):] # get the key after the pathName
+                myStrkey = object_summary.key[len(pathName):]  # get the key after the pathName
                 num_of_slash = myStrkey.count('/')
                 # only print the items with Zero slash or 1 slash at the end
                 if num_of_slash == 0 or (num_of_slash == 1 and myStrkey[-1] == "/"):
                     if myStrkey: result.append(object_summary.key)
             for i in result:
-                print (i)
+                print(i)
             return result
         except BaseException as e:
             print(e)
@@ -584,33 +612,36 @@ def __print_all_keys_for_debug_(bucketName, pathName):
                 if num_of_slash == 0 or (num_of_slash == 1 and myStrkey[-1] == "/"):
                     if myStrkey: result.append(myStrkey)
             for i in result:
-                print (i)
+                print(i)
             return result
         except BaseException as e:
             print(e)
             return ["UNSUCCESS"]
 
     return result
+
+
 # for a bucketName and a pathName, print all the Absolute keys for objects
 # This is not required by the assignment, I can delete this latter
 def __print_keys__(args):
-    argsList=args.split(":",1)
-    if len(argsList)!=2:
+    argsList = args.split(":", 1)
+    if len(argsList) != 2:
         print("You have to use the full path including the bucket name")
         return UNSUCCESS
     # remove all the leading and ending spaces
     bucketName = argsList[0].strip()
     pathName = argsList[1].strip()
     pathName = __reslove_a_path(pathName)
-    if not __validate_a_path(bucketName,pathName):
+    if not __validate_a_path(bucketName, pathName):
         return UNSUCCESS
 
     try:
-        __print_all_keys_for_debug_(bucketName,pathName)
+        __print_all_keys_for_debug_(bucketName, pathName)
         return True
     except BaseException as e:
         print(e)
         return False
+
 
 # return true if a bucketname and pathname is valid to visit
 def __validate_a_path(bucketName, pathName) -> bool:
@@ -704,11 +735,13 @@ def __reslove_a_path(args: str, addEndingSlash=True):
     args = "/".join(result)
     return args
 
+
 # this is a helper function to split the user input if the user put double quote with the input
 
-def __split_args__(args:str):
+def __split_args__(args: str):
     my_real_command = shlexsplit(args)
     return my_real_command
+
 
 def do_test(args: str):
     global s3_working_directory
@@ -718,9 +751,6 @@ def do_test(args: str):
     from shlex import split as shlexsplit
     my_real_command = shlexsplit(args)
     print(my_real_command)
-
-
-
 
 
 def do_list(args: str):
@@ -1005,9 +1035,9 @@ dispatch = {
     "cf": do_change_folder,
     "cdelete": do_delete_object,
     "t": do_test,
-    "pkeys":__print_keys__,
+    "pkeys": __print_keys__,
     "create_folder": do_create_folder,
-    "ccopy":do_copy_object,
+    "ccopy": do_copy_object,
 }
 
 while True:
