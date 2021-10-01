@@ -1,3 +1,5 @@
+from collections import deque
+
 from pynput import keyboard
 from enum import IntEnum
 import ReadCredentials
@@ -96,10 +98,10 @@ except BaseException as e:
 ##########################################################################################
 # detected the current running environment
 running_platform = platform.system()
-print(running_platform)
+# print(running_platform)
 # detect the current local working directory
 local_working_directory = os.getcwd()
-print(local_working_directory)
+# print(local_working_directory)
 global s3_working_directory
 global s3_bucket_name
 s3_working_directory = ""
@@ -111,32 +113,33 @@ s3_bucket_name = ""
 
 def do_lc_copy(args: str) -> int:
     """lc_copy <full or relative pathname of local file><bucket name>:<full pathname of S3 object> """
-    # seperate the argument by both space and :
-    shell_arg_list = shlexsplit(args)
-
     # use shlex to handle the case if the user input has quotes
+    shell_arg_list = shlexsplit(args)
+    # print(shell_arg_list)
+
     if len(shell_arg_list) != 2:
         print(colored("lc_copy need two arguments: the local file path, and the bucketname:full_path_of_S3_object",
                       "red"))
         print(colored("but you are giving " + str(len(shell_arg_list)) + " arguments:", "red"))
         print(colored(shell_arg_list, "red"))
         return UNSUCCESS
-    print(shell_arg_list)
+    # print(shell_arg_list)
 
-# I am trying to save my old codes, so I have to use the argList interface, this is just a adapter
+    # I am trying to save my old codes, so I have to use the argList interface, this is just a adapter
+    # seperate the argument by both space and :
     argsList = []
     argsList.append(shell_arg_list[0])
-    cloud_argsList = shell_arg_list[1].split(":",1)
-    # argsList = re.split(" |:", args)
+    cloud_argsList = shell_arg_list[1].split(":", 1)
+
     for i in cloud_argsList:
         argsList.append(i)
-    print(argsList)
-
+    # print(argsList)
+    # argsList = re.split(" |:", args)
     # 0. check if the parameter list has 3 variables
-    if len(argsList) != 3:
-        print("S5 Error: The input is missing some arguments, please double check your input")
-        print("The input should be in the format of: lc_copy <full or relative pathname of local file><bucket "
-              "name>:<full pathname of S3 object>")
+    if len(argsList) != 3 or argsList[-1] == "":
+        print(colored("S5 Error: The input is missing some arguments, please double check your input", "red"))
+        print(colored("The input should be in the format of: lc_copy <full or relative pathname of local file><bucket "
+                      "name>:<full pathname of S3 object>", "red"))
         return UNSUCCESS
     else:
         local_file_path = argsList[0]
@@ -148,7 +151,8 @@ def do_lc_copy(args: str) -> int:
         # path.exists(argsList[0])
         open(argsList[0], "r")
     except:
-        print("S5 Error: Invalid path name for the local file: ", argsList[0])
+        error_message = "S5 Error: Invalid path name for the local file: " + argsList[0]
+        print(colored(error_message, "red"))
         return UNSUCCESS
 
     # 2. check if the bucket is available
@@ -158,13 +162,16 @@ def do_lc_copy(args: str) -> int:
     except botocore.exceptions.ClientError as e:
         print(e)
         error_code = e.response['Error']['Code']
-        if error_code == "404":
-            print("S5 Error: Not able to get access to Bucket: ", bucket_name, "\nPlease check your Permission "
-                                                                               "to get access to this Bucket ")
+        if error_code == "404" or error_code == "400":
+            error_message = "S5 Error: Not able to get access to Bucket: " + bucket_name + "\nPlease check your " \
+                                                                                           "Permission to get access " \
+                                                                                           "to this Bucket "
+            print(colored(error_message, "red"))
         # print(error_code)
         return UNSUCCESS
         # if does not have a valid bucket name, i.e. has # or $ in the bucket name
     except botocore.exceptions.ParamValidationError as e:
+        print(colored("bucket" + bucket_name + " name is not available", "red"))
         print(e)
         return UNSUCCESS
         # if no internet connection
@@ -176,23 +183,47 @@ def do_lc_copy(args: str) -> int:
     # 3. check if we can successfully upload the file to AWS
     try:
         # need to add a function to add sub-folders along the path
+        # for the file name, check that there are no two slash together and not star from a slash
 
+        if not __check_no_two_slash_together_and_not_start_with_slash__(pathname3_s3_obj):
+            print(colored("S5 Error: The input: " + pathname3_s3_obj + " is illegal!", "red"))
+            print(colored("The filepath should not start with '/' or have more than two '/' side by side.", "red"))
+            return UNSUCCESS
+        # resolve the path name first
+        pathname3_s3_obj = __reslove_a_path(pathname3_s3_obj, False)
         if pathname3_s3_obj:
             pathname3_s3_obj_list = pathname3_s3_obj.split("/")
 
-        if pathname3_s3_obj_list[-1] == "": #1/2/3/
-            print("S5 Error: the last part of your input is not a valid file object name: ", "red")
-            print(pathname3_s3_obj_list, "red")
+        if pathname3_s3_obj_list[-1] == "":  # 1/2/3/
+            print(colored("S5 Error: destination file name is either empty or end with '/': ", "red"))
+            print(colored(pathname3_s3_obj_list, "red"))
+            return UNSUCCESS
+        else:
+            pathname3_s3_obj_list.pop()  # prepare the subfodler list for checking if they exist or not
+
+        # need to check if all the sub folders are exist
+        if not __validate_folder_helper(bucket_name, pathname3_s3_obj_list):
+            badPath = bucket_name + ":" + "/".join(pathname3_s3_obj_list)
+            print(colored("S5 Error: The input folder: " + badPath + "/ does not exist!", "red"))
             return UNSUCCESS
 
-        ### need to do more work from here #####
+        # need to check if there is a that file already, we will stop copy the file if it is already there
 
+        # the source must exist
+        fromPathName = __reslove_a_path(pathname3_s3_obj, False)
+        if __present_of_a_path(bucket_name, pathname3_s3_obj):
+            print(colored("Unsuccessful lc_copy, destination file already exist, please give it another name!", "red"))
+            return UNSUCCESS
 
         response = client.upload_file(local_file_path, bucket_name, pathname3_s3_obj)
 
+        # # also need to create all the suborders associated with this object
+        # __create_folder_helper(bucket_name, pathname3_s3_obj_list)
+
         return SUCCESS
-    except RuntimeError:
-        print("Not able to upload the file:")
+    except BaseException as e:
+        print(colored("Not able to upload the file:", "red"))
+        print(e)
         return UNSUCCESS
     #
     return SUCCESS
@@ -242,7 +273,10 @@ def do_change_folder(args: str) -> int:
     global s3_bucket_name
     temp_s3_working_directory = s3_working_directory
     temp_s3_bucket_name = s3_bucket_name
-    print("currently working with " + temp_s3_bucket_name + "  :  " + temp_s3_working_directory)
+    # print("currently working with " + temp_s3_bucket_name + "  :  " + temp_s3_working_directory)
+    # use the shlex to handle the user input for double quotes
+    shell_arg_list = shlexsplit(args)
+    args = "".join(shell_arg_list)
 
     if args == "" or args == ".":
         return SUCCESS
@@ -380,6 +414,11 @@ def do_copy_object(args: str) -> int:
     # seperate two path an get the 4 names:
     fromPath = arglist[0]
     toPath = arglist[1]
+    fromBucketName = ""
+    toBucketName = ""
+    fromPathName = ""
+    toPathName = ""
+
     # print (fromPath)
     # print (toPath)
     if len(fromPath.split(":", 1)) == 1:  # if no bucket Name
@@ -428,6 +467,16 @@ def do_copy_object(args: str) -> int:
                       "destination object a name", "red"))
         return UNSUCCESS
 
+    # the from path and the to path must have no two slash together
+    # print(fromPathName)
+    # print(toPathName)
+    if not __check_no_two_slash_together_and_not_start_with_slash__(fromPathName):
+        print(colored("ccopy error, source file format error: " + fromPathName, "red"))
+        return UNSUCCESS
+    if not __check_no_two_slash_together_and_not_start_with_slash__(toPathName):
+        print(colored("ccopy error, destination file format error: " + toPathName, "red"))
+        return UNSUCCESS
+
     # the source must exist
     fromPathName = __reslove_a_path(fromPathName, False)
     toPathName = __reslove_a_path(toPathName, False)
@@ -435,6 +484,31 @@ def do_copy_object(args: str) -> int:
     if not __present_of_a_path(fromBucketName, fromPathName):
         print(colored("ccopy error, source file does not exist", "red"))
         return UNSUCCESS
+
+    ###############################################################################
+    ## need to add a function here to make sure all the subfolders are avaliable!!!
+    ################################################################################
+
+    # suppore I only copy file objects, so pathName will be like
+    # a/b/c/filea
+    # a/fileb
+
+    try:
+        if toPathName:
+            toPathNameList = toPathName.split("/")
+            if toPathNameList:
+                toPathNameList.pop()  # remove the file object name, only keep the path
+            else:
+                toPathNameList = []
+
+            if not __validate_folder_helper(toBucketName, toPathNameList):
+                print(colored("S5 Error: Can not copy due to destination file path invalid", "red"))
+                badPath = toBucketName+": "
+                badPath += "/".join(toPathNameList)
+                print(colored("This PATH does not exist: " + badPath, "red"))
+                return UNSUCCESS
+    except BaseException as e:
+        print(colored("Can not make copy", "red"))
 
     # and the destination must not exist
     if __present_of_a_path(toBucketName, toPathName):
@@ -465,6 +539,53 @@ def do_copy_object_need_a_warpper(fromBucketName, fromPathName, toBucketName, to
         return UNSUCCESS
 
 
+# need to have a warpper to
+# validate bucketName
+# validate from PathName
+# covert the pathName ot absolutelocalPathName
+# make sure localPathName is empty
+
+
+def do_copy_from_cloud_need_a_warpper(fromBucketName, fromPathName, absolutelocalPathName):
+    try:
+        client.download_file(fromBucketName, fromPathName, absolutelocalPathName)
+        return SUCCESS
+    except BaseException as e:
+        print(colored("Can not perform the download operation, please see the error message below:", "red"))
+
+        if "404" in str(e) or "400" in str(e):
+            error_message = "S5 Error: Not able to get access to Bucket: " + fromBucketName + "\nPlease check your " \
+                                                                                              "Permission to get access " \
+                                                                                              "to this Bucket "
+        else:
+            error_message = str(e)
+        print(colored(e, "red"))
+        return UNSUCCESS
+
+
+# make a pathName become a absolute pathName
+# input localPathName can not be null
+def __helper__make_a_full_path(localPathName):
+    myPath = Path(localPathName).absolute()
+    #     # print(myPath)
+    return str(myPath)
+
+# download a file from AWS to local directory
+# I used a lot of helper function to handle error
+# this is the last method I wrote, and this is the best method so far
+def do_copy_cloud(args: str) -> bool:
+    try:
+        user_input = __helper__split_args__(args, expact_arguments_num=2) # make sure the input has two parts
+        # print(user_input)
+        my_bucket_name, my_object_path = __helper__validate_bucketName_and_Path__(user_input[0]) # get the S3 pathes
+        my_local_object_path = __helper__make_a_full_path(user_input[1]) # get the local object path
+        # print(my_bucket_name, my_object_path, my_local_object_path)
+        __helper__check_if_a_loca_file_name_is_avaliable(my_local_object_path)
+        return do_copy_from_cloud_need_a_warpper(my_bucket_name, my_object_path,my_local_object_path)
+    except BaseException as e:
+        print(colored(e,"red"))
+
+
 def do_delete_object(args: str) -> int:
     # will not work for object contains a ":" in its pathName
     global s3_working_directory
@@ -475,20 +596,28 @@ def do_delete_object(args: str) -> int:
         print(colored("cdelete command need a full or indirect pathname of object as argument ", "red"))
         return UNSUCCESS
 
+    # if args is not none, we have to separate full path or relative path:
+    # use the shlex to handle the user input for double quotes
+    shell_arg_list = shlexsplit(args)
+    args = "".join(shell_arg_list)
+
     # need to support delete on full path and indirect pathname
     arglist = args.split(":", 1)
+    # print(arglist)
 
     if (len(arglist) == 1):
         # this is a relative path, try to delete the object
         my_bucket_name = s3_bucket_name
         my_object_name = s3_working_directory + arglist[0]
-        my_object_name = __reslove_a_path(my_object_name, False)
+        # print(my_object_name)
+        my_object_name = __reslove_a_path(my_object_name, my_object_name[-1] == "/")
+        # print(my_object_name)
 
     elif len(arglist) == 2:  # in the format of bucket:objectname
         # this is a absolute path
         my_bucket_name = arglist[0]
         my_object_name = arglist[1]
-        my_object_name = __reslove_a_path(my_object_name, False)
+        my_object_name = __reslove_a_path(my_object_name, my_object_name[-1] == "/")
     else:
         print(colored("S5 Error: ", args, " is not a valid command.", "red"))
         return UNSUCCESS
@@ -511,12 +640,21 @@ def do_delete_object(args: str) -> int:
 
     # check if the object is present, and then check if the folder is empty, if both true, then delete it
     try:
+        # print(my_object_name)
         obj = resource.Object(my_bucket_name, my_object_name)
         # client code handle the no such key exception, this is the trick to check if a object is present.
         client.get_object(Bucket=my_bucket_name, Key=my_object_name)
         # also need to check if this object is empty!!!
         bucket = resource.Bucket(my_bucket_name)
         object_list = []
+
+        # if it is a file object, not end with "/", we can delete it directly
+        if my_object_name and my_object_name[-1] != "/":
+            obj.delete()
+            print(colored(" The object " + my_object_name + " has been deleted", "green"))
+            return SUCCESS
+
+        # if it is a folder object, we need to check if there are any subfolders inside
         for object_summary in bucket.objects.filter(Prefix=my_object_name):
             # print(object_summary)
             object_list.append(object_summary)
@@ -525,7 +663,23 @@ def do_delete_object(args: str) -> int:
                     "S5 Error: The folder " + my_object_name + " is not empty so we can not delete it.",
                     "red"))
                 return UNSUCCESS
+
+        # print(s3_working_directory)
+        # print(obj.key)
+
+        # remove the last portion of s3_working_directory if in the same directory:
+        objkey = obj.key
         obj.delete()
+        if objkey and s3_working_directory:
+            if objkey == s3_working_directory:
+                mylist = s3_working_directory.split("/")
+                mylist.pop()  # remove the lasting empty ""
+                if mylist:
+                    mylist.pop()  # remove the last folder
+                    if mylist:
+                        s3_working_directory = "/".join(mylist) + "/"  # put the path structure back
+                    else:
+                        s3_working_directory = ""
         print(colored(" The object " + my_object_name + " has been deleted", "green"))
         return SUCCESS
     except client.exceptions.NoSuchKey as e:
@@ -722,18 +876,46 @@ def __reslove_a_path(args: str, addEndingSlash=True):
 
     folder_list = args.split("/")
     result = []
-
+    # print (args)
     # handle the cases where ".." is in the path
     for i in folder_list:
         if i == ".":
             pass
-        if i != "..":
+        if i and i != "..":
             result.append(i)
         if i == ".." and result:
             result.pop()
 
     args = "/".join(result)
+
+    if args and addEndingSlash and args[-1] != "/":
+        args += "/"
     return args
+
+
+# check if the input arguments has two // together
+# return False for //a//
+# return True for a/b/c
+def __check_no_two_slash_together_and_not_start_with_slash__(args: str):
+    if args:
+        # remove the leading and ending spaces
+        args = args.strip()
+        # print(args)
+
+        l = deque(list(args))
+        slow = l.popleft()
+
+        if slow == "/":
+            return False  # return False if starting with "/"
+
+        while l:
+            fast = l.popleft()
+            if slow == "/" and fast == "/":
+                return False  # return false if two slash are together
+            else:
+                slow = fast
+
+    return True
 
 
 # this is a helper function to split the user input if the user put double quote with the input
@@ -743,14 +925,115 @@ def __split_args__(args: str):
     return my_real_command
 
 
+# this is a helper function to split the user input into expected parts.
+# if the number of input did't math the expacted argument number, an error will be raise
+# if any part of the input is empty, raise an error
+def __helper__split_args__(args: str, expact_arguments_num=2):
+    my_real_command = shlexsplit(args)
+    # check to see if the num of argument meats the requirements
+    if len(my_real_command) != expact_arguments_num:
+        error_message = "This command is expecting " + str(expact_arguments_num) + " arguments, but " + str(
+            len(my_real_command)) + " are given:\n"
+        count = 1
+        for i in my_real_command:
+            error_message +=str(count)+":   "+str(i)+"\n"
+            count +=1
+        raise RuntimeError("S5 Error: " + error_message[:-1])
+
+    # check to see if any of the argument is Null
+    for i in my_real_command:
+        if i=="":
+            error_message = "Found an empty string as part of the input argument!"
+            raise RuntimeError("S5 Error: " + error_message)
+    return my_real_command
+
+# this is a helper function that check if a bucket name is present and if the key to an object present
+# if the name of bucket is not there, raise an error
+# if the key of the object is not there, raise an error
+# return a list [bucketName, Full_Path] if success
+def __helper__validate_bucketName_and_Path__(args:str, justFileObject=True):
+    global s3_working_directory
+    global s3_bucket_name
+    # print(args)
+    # check if bucketname is there:
+    if not args:
+        error_message = "Need full or relative pathname of S3 file, but Null is given."
+        raise RuntimeError("S5 Error: " + error_message)
+
+    # makesure it is not start with "/"
+    if args[1] == "/":
+        error_message = "Wrong Path Name: "+args
+        raise RuntimeError("S5 Error: " + error_message)
+
+    # make sure the file object is not end with "/"
+    if justFileObject and args[-1] == "/":
+        error_message = "This command is expecting to work with a S3 File object, but the input is a Folder Object: " + args
+        error_message = "\nMake sure you do not have '/' at the end for an file object"
+        raise RuntimeError("S5 Error: " + error_message)
+
+
+    # check if this is a relative path or a absolute path:
+    argsList = args.split(":",1)
+    if len(argsList) == 1: # if this is a relative path
+        my_bucket_name = s3_bucket_name
+        my_working_name = s3_working_directory+argsList[0]
+    else:               # if this is a absolute path
+        my_bucket_name =  argsList[0]
+        my_working_name = argsList[1]
+
+    # bucket Name should not be empty:
+    if not my_bucket_name:
+        error_message = "No valid bucket Name available, make sure you type in the correct bucket name or ch_folder to go inside a bucket"
+        error_message += "\nThe input bucket name is: "+my_bucket_name +", the input file path name is  "+my_working_name+"."
+        raise RuntimeError("S5 Error: " + error_message)
+
+    # path to the file object should not be empty:
+    if not my_working_name:
+        error_message = "No valid object path name available."
+        error_message += "\nThe input bucket name is: " + my_bucket_name + ", the input file path name is  " + my_working_name+"."
+        raise RuntimeError("S5 Error: " + error_message)
+
+    # make sure the bucket name present
+    try:
+        bucket = resource.meta.client.head_bucket(Bucket=my_bucket_name)
+    except BaseException as e:
+        error_message = "Bucket Name "+my_bucket_name+" Does Not exist. Detail Info See Below:\n"
+        error_message += str(e)
+        raise RuntimeError("S5 Error: " + error_message)
+
+    # maker sure the file object is there
+    # __present_of_a_path()
+    pathName = __reslove_a_path(my_working_name, False)
+    try:
+        item = resource.Object(my_bucket_name, pathName).get()
+    except BaseException as e:
+        error_message = "Object Key "+pathName+" Does not exist. Detail Info See Below:\n"
+        error_message += str(e)
+        raise RuntimeError("S5 Error: " + error_message)
+
+    return [my_bucket_name, pathName]
+
+def __helper__check_if_a_loca_file_name_is_avaliable(args:str):
+    if not args:
+        error_message = "Need a valid local file path, but Null is given."
+        raise RuntimeError("S5 Error: " + error_message)
+
+    if os.path.isfile(args):
+        error_message = "There is a file with this name already: "+args
+        error_message += "\nPlease give it another name to avoid overwrite"
+        raise RuntimeError("Unsuccessful cl_copy: " + error_message)
+
+    return True
+
 def do_test(args: str):
     global s3_working_directory
     global s3_bucket_name
     # test for shlex
 
-    from shlex import split as shlexsplit
-    my_real_command = shlexsplit(args)
-    print(my_real_command)
+    # print(__present_of_a_path("cis4010-ymei","a space/"))
+    mypath = __helper__make_a_full_path(args)
+    print(mypath)
+    return do_copy_from_cloud_need_a_warpper("cis4010b01", "main.py", mypath)
 
 
 def do_list(args: str):
@@ -767,21 +1050,106 @@ def do_list(args: str):
         args = args
         return do_short_list(args)
 
+# This is a helper function that calculate the bin size
+def __calculate_bucket_size__(mybucket):
+    try:
+        bucket = resource.Bucket(mybucket)
+        mysize = 0
+        for object in bucket.objects.all():
+            mysize += object.size
+
+        return str(mysize)
+
+    except BaseException as e:
+        error_message = str(e) +"\nS5 is going to display NA for the size of this bucket."
+        # print(colored(error_message,"red"))
+        # print("The BucketName: "+mybucket+" is not exist!")
+        return "NA"
+
+def __get_object_acl__(bucket_name, object_name):
+    """Retrieve the access control list of an Amazon S3 object.
+    :param bucket_name: string
+    :param object_name: string
+    :return: Dictionary defining the object's access control policy consisting
+     of owner and grants. If error, return None.
+    """
+    # reference https://github.com/davidclin/scripts/blob/master/s3-get-object-acl.py
+
+    # Retrieve the bucket ACL
+    try:
+        response = client.get_object_acl(Bucket=bucket_name, Key=object_name)
+        print(response)
+        return {'Owner': response['Owner'], 'Grants': response['Grants']}
+
+    except BaseException as e:
+        # AllAccessDisabled error == bucket not found
+        # logging.error(e)
+        response = {"Owner":{'ID': 'NA'} ,
+                    "Grants": [{'Grantee': {'ID': 'NA', 'Type': 'NA'}, 'Permission': 'NA'}]
+        }
+        return {'Owner': response['Owner'], 'Grants': response['Grants']}
+    # Return both the Owner and Grants keys
+    # The Owner and Grants settings together form the Access Control Policy.
+    # The Grants alone form the Access Control List.
+    # name = client.describe_account(AccountId=response['Owner']["ID"]).get('Account').get('Name')
+
+
+def __get_bucket_owner(mybucket):
+    try:
+
+        result = "NA"
+        response = client.get_bucket_acl(
+            Bucket=mybucket,
+            # ExpectedBucketOwner='string'
+        )
+
+        return response['Owner']['ID']
+
+    except BaseException as e:
+        error_message = str(e)
+        # print(colored(error_message,"red"))
+        # print("The BucketName: "+mybucket+" is not exist!")
+        return "NA"
 
 def do_long_list(args: str):
     global s3_working_directory
     global s3_bucket_name
     # if we need to print long ls at the root
     if args == "/":
+
         response = client.list_buckets()["Buckets"]
+        ownership = client.list_buckets()["Owner"]
+        data = []
+
+        warnings_message = "=========================================================================================="
+        warnings_message += "\nThe owner of the buckets listed is: "+ownership["DisplayName"]+ "\nThe ID of the owner is: "+ownership["ID"]+"\n"
+        warnings_message += "=========================================================================================="
+        print(colored(warnings_message, "blue"))
+
+
+        # print (ownership)
+        # print(response)
         for i, r in enumerate(response):
-            print(i + 1, ": ", r["Name"])
+            bucketName = str(r['Name'])
+            # my_size = __calculate_bucket_size__(bucketName)
+            # my_owner = ownership[i]["DisplayName"]
+            # print(__calculate_bucket_size__())
+            # d = [str(i), r['Name'], str(r['CreationDate']), my_size]
+            # d = [str(i), r['Name'], str(r['CreationDate']), my_owner]
+            d = [str(i), r['Name'], str(r['CreationDate'])]
+            data.append(d)
+            # print(i + 1, ": ", r)
+        if data: print(tabulate(data, headers=["Num.","Name", "CreationDate"]))
         return SUCCESS
 
     # if we are going to printout the long ls at the current folder:
     if args == "":
         if s3_bucket_name == "" and s3_working_directory == "":
-            return do_short_list("/")
+            #####################################################################################
+            # I need to do something here to display a long version for the buckets
+            #################################################################################
+            # print("this is a long list with / or -l or both")
+            return do_long_list("/")
         mykeys = __get_all_keys(s3_bucket_name, s3_working_directory)
         if len(mykeys) == 1 and mykeys[0] == "UNSUCCESS":
             print(colored("S5 Error: can not find information for the dir:" + s3_working_directory, "red"))
@@ -793,6 +1161,12 @@ def do_long_list(args: str):
                     pass  # this is a bug in AWS
                 else:
                     object = resource.Object(s3_bucket_name, k).get()
+
+                    ## get the permission for the object
+                    # myacl = __get_object_acl__(s3_bucket_name, k)
+
+                    # d = [str(object["ContentLength"]), k[len(s3_working_directory):], str(object["LastModified"]),
+                    #      myacl["Owner"]["ID"], myacl["Grants"][0]["Permission"]]
                     d = [str(object["ContentLength"]), k[len(s3_working_directory):], str(object["LastModified"])]
                     data.append(d)
             if data: print(tabulate(data, headers=["Size", "Name", "Last_Modified_Date"]))
@@ -823,7 +1197,11 @@ def do_long_list(args: str):
                     pass  # this is a bug in AWS
                 else:
                     object = resource.Object(bucketName, k).get()
-                    d = [str(object["ContentLength"]), k[len(pathName):], str(object["LastModified"])]
+                    ## get the permission for the object
+                    # myacl = __get_object_acl__(bucketName, k)
+                    # d = [str(object["ContentLength"]), k[len(s3_working_directory):], str(object["LastModified"]),
+                    #      myacl["Owner"]["ID"], myacl["Grants"][0]["Permission"]]
+                    d = [str(object["ContentLength"]), k[len(s3_working_directory):], str(object["LastModified"])]
                     data.append(d)
             if data: print(tabulate(data, headers=["Size", "Name", "Last_Modified_Date"]))
             return SUCCESS
@@ -840,7 +1218,7 @@ def do_short_list(args: str):
             print(i + 1, ": ", r["Name"])
         return SUCCESS
     # list all the files under the current local directory
-    # this is wrong, I should list all the object in the current s3 directroy
+
     if args == "":
         if s3_bucket_name == "" and s3_working_directory == "":
             return do_short_list("/")
@@ -934,15 +1312,16 @@ def do_create_folder(args: str):
     if args == "":
         print(colored("S5 Error: The args for this command can not be null!", "red"))
         return UNSUCCESS
-    # if args is not none, we have to seperate full path or relatrive path:
+    # if args is not none, we have to separate full path or relative path:
+    # use the shlex to handle the user input for double quotes
+    shell_arg_list = shlexsplit(args)
+    args = "".join(shell_arg_list)
+
     args_list = args.split(":", 1)
 
     if len(args_list) > 1:  # if this is the full path with bucket name
         bucketName = args_list[0]
         pathName = args_list[1]
-
-        # put a slash at the end of the path name and validate a path
-        pathName = __reslove_a_path(pathName)
 
         # pathName should not be none
         if pathName == "":
@@ -953,16 +1332,52 @@ def do_create_folder(args: str):
         if not __present_of_a_path(bucketName, ""):
             print(colored("S5 Error: Can not create folder due to bucket not exist!", "red"))
             return UNSUCCESS
+
+        # make sure the path is not start with slash or have two slash together
+        if not __check_no_two_slash_together_and_not_start_with_slash__(pathName):
+            print(colored("S5 Error: The input: " + pathName + " is illegal!", "red"))
+            print(colored("The filepath should not start with '/' or have more than two '/' side by side.", "red"))
+            return UNSUCCESS
+
+        # put a slash at the end of the path name and validate a path
+        pathName = __reslove_a_path(pathName, addEndingSlash=True)
+        # print(pathName)
+        # pathName should not be none
+        if pathName == "":
+            print(colored("S5 Error: Can not create folder due to Folder Name is Null!", "red"))
+            return UNSUCCESS
+
         # the folder should not be present
         if __present_of_a_path(bucketName, pathName):
-            print(colored("S5 Error: Can not create folder due to File Already Exists!", "red"))
+            print(colored("S5 Error: Can not create folder due to Object Already Exists!", "red"))
             return UNSUCCESS
+
+        # all the subfolders should be present
+
+        # resolve the path name first
+        if pathName:
+            pathname3_s3_obj_list = pathName.split("/")
+
+        # prepare the subfodler list for checking if they exist or not
+
+        if pathname3_s3_obj_list[-1] == "":
+            pathname3_s3_obj_list.pop()  # because the last char is "/", we remove the "" from the list
+
+        if pathname3_s3_obj_list[-1]:
+            pathname3_s3_obj_list.pop()  # remove the last item, so we can check subfolders
+
+        # need to check if all the sub folders are exist
+        if not __validate_folder_helper(bucketName, pathname3_s3_obj_list):
+            badPath = bucketName + ":" + "/".join(pathname3_s3_obj_list)
+            print(colored("S5 Error: The input folder: " + badPath + "/ does not exist!", "red"))
+            return UNSUCCESS
+
         # everything good, we are going to create a object
         try:
             # actually, I can not directly put the object here, I have to do this folder by folder
-            pathList = pathName.split("/")
-            __create_folder_helper(bucketName, pathList)
-            # response = client.put_object(Bucket =bucketName, Key =  pathName)
+            # pathList = pathName.split("/")
+            # __create_folder_helper(bucketName, pathList)
+            response = client.put_object(Bucket=bucketName, Key=pathName)
             return SUCCESS
         except BaseException as e:
             print(colored("S5 Error: Can not create folder.", "red"))
@@ -973,26 +1388,71 @@ def do_create_folder(args: str):
         bucketName = s3_bucket_name
         # put a slash at the end of the path name and validate a path
         pathName = s3_working_directory + args_list[0]
-        pathName = __reslove_a_path(pathName)
+        # pathName = __reslove_a_path(pathName)
+
+        # # pathName should not be none
+        # if pathName == "":
+        #     print(colored("S5 Error: Can not create folder due to Folder Name is Null!", "red"))
+        #     return UNSUCCESS
+        #     # the bucket should present
+        # if not __present_of_a_path(bucketName, ""):
+        #     print(colored("S5 Error: Can not create folder due to bucket not exist!", "red"))
+        #     return UNSUCCESS
+        #     # the folder should not be present
+        # if __present_of_a_path(bucketName, pathName):
+        #     print(colored("S5 Error: Can not create folder due to File Already Exists!", "red"))
+        #     return UNSUCCESS
+        #     # everything good, we are going to create a object
 
         # pathName should not be none
         if pathName == "":
             print(colored("S5 Error: Can not create folder due to Folder Name is Null!", "red"))
             return UNSUCCESS
-            # the bucket should present
-        if not __present_of_a_path(bucketName, ""):
-            print(colored("S5 Error: Can not create folder due to bucket not exist!", "red"))
+
+        # make sure the path is not start with slash or have two slash together
+        if not __check_no_two_slash_together_and_not_start_with_slash__(pathName):
+            print(colored("S5 Error: The input: " + pathName + " is illegal!", "red"))
+            print(colored("The filepath should not start with '/' or have more than two '/' side by side.", "red"))
             return UNSUCCESS
-            # the folder should not be present
+
+        # put a slash at the end of the path name and validate a path
+        pathName = __reslove_a_path(pathName, addEndingSlash=True)
+        # print(pathName)
+        # pathName should not be none
+        if pathName == "":
+            print(colored("S5 Error: Can not create folder due to Folder Name is Null!", "red"))
+            return UNSUCCESS
+
+        # the folder should not be present
         if __present_of_a_path(bucketName, pathName):
-            print(colored("S5 Error: Can not create folder due to File Already Exists!", "red"))
+            print(colored("S5 Error: Can not create folder due to Object Already Exists!", "red"))
             return UNSUCCESS
-            # everything good, we are going to create a object
+
+        # all the subfolders should be present
+
+        # resolve the path name first
+        if pathName:
+            pathname3_s3_obj_list = pathName.split("/")
+
+        # prepare the subfodler list for checking if they exist or not
+
+        if pathname3_s3_obj_list[-1] == "":
+            pathname3_s3_obj_list.pop()  # because the last char is "/", we remove the "" from the list
+
+        if pathname3_s3_obj_list[-1]:
+            pathname3_s3_obj_list.pop()  # remove the last item, so we can check subfolders
+
+        # need to check if all the sub folders are exist
+        if not __validate_folder_helper(bucketName, pathname3_s3_obj_list):
+            badPath = bucketName + ":" + "/".join(pathname3_s3_obj_list)
+            print(colored("S5 Error: The input folder: " + badPath + "/ does not exist!", "red"))
+            return UNSUCCESS
+
         try:
             # actually, I can not directly put the object here, I have to do this folder by folder
-            pathList = pathName.split("/")
-            __create_folder_helper(bucketName, pathList)
-            # response = client.put_object(Bucket=bucketName, Key=pathName)
+            # pathList = pathName.split("/")
+            # __create_folder_helper(bucketName, pathList)
+            response = client.put_object(Bucket=bucketName, Key=pathName)
             return SUCCESS
         except BaseException as e:
             print(colored("S5 Error: Can not create folder.", "red"))
@@ -1015,9 +1475,30 @@ def __create_folder_helper(bucketName, pathNameList):
                 raise RuntimeError(" In Valid PathName List" + str(pathNameList))
 
 
+# validate folder helper is going to recursively check if all the intermediate folders are available
+# bucketName is the bucketName you want to check
+# pathNameList is a list of intermediate subfolder names, for example, a/b/c/d.txt, we should
+# only check a/, a/b/, and a/b/c exist, so pathNameList = [a,b,c]
+# this function will return True if all subfolders exist
+# and return False an error if any subfolder is missing
+
+def __validate_folder_helper(bucketName, pathNameList):
+    base = ""
+    for name in pathNameList:
+        name = name + "/"
+        base += name
+        if __present_of_a_path(bucketName, base):
+            pass
+        else:
+            # print (bucketName +" and " + base +" does not exist!")
+            return False
+    return True
+
+
 def do_quit(*args):
-    print("Exiting the S5 Shell Program Now...")
-    print("Thank you for using S5, See you next time!")
+    endingStr = "Exiting the S5 Shell Program Now...\n"
+    endingStr+= "Thank you for using S5, See you next time!"
+    print(colored(endingStr,"blue"))
     sys.exit(0)
 
 
@@ -1031,13 +1512,17 @@ dispatch = {
     "db": do_delete_bucket,
     "delete_bucket": do_delete_bucket,
     "q": do_quit,
+    "Q": do_quit,
     "cwf": do_current_work_folder,
     "cf": do_change_folder,
+    "ch_folder": do_change_folder,
     "cdelete": do_delete_object,
     "t": do_test,
     "pkeys": __print_keys__,
     "create_folder": do_create_folder,
     "ccopy": do_copy_object,
+    "cl_copy": do_copy_cloud,
+    "cl": do_copy_cloud,
 }
 
 while True:
@@ -1060,14 +1545,21 @@ while True:
         # if the command is not a controlled method, pass it directly to the system shell
         try:
             if os.system(user_input) != 0:
-                raise Exception("this command does not exist")
+                pass
+                # raise Exception("this command does not exist")
         except BaseException as e:
-            print("S5 Error: Please see the error message below:")
+            # print("S5 Error: Please see the error message below:")
             print(colored(e, "red"))
     # if we have a def of the command already, then dispatch it from the dict.
     else:
+        if command in ["q","quit","exit","Q"]:
+            dispatch["q"](arg)
         # if it is available, then we dispatch the command
-        status_val = dispatch[command](arg)
+        try:
+            status_val = dispatch[command](arg)
+        except BaseException as e:
+            print(colored(e, "red"))
+            print(colored("Please double check your arguments:" + arg, "red"))
 
 # response = client.list_buckets()
 # print(response)
