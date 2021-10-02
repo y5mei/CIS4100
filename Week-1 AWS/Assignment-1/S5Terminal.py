@@ -90,7 +90,7 @@ try:
 
 except BaseException as e:
     print(colored(ON_CONNECTION_FAIL_TEXT, "red"))
-    print(e)
+    # print(e)
     sys.exit(0)
 
 ##########################################################################################
