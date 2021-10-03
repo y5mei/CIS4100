@@ -1,13 +1,9 @@
 from collections import deque
-
-from pynput import keyboard
-from enum import IntEnum
 import ReadCredentials
 import boto3
 import sys
 import os
 import platform
-import re
 import botocore
 from colorama import init
 from termcolor import colored
@@ -378,7 +374,7 @@ def do_delete_bucket(args: str) -> int:
         return UNSUCCESS
     try:
         response = client.delete_bucket(Bucket=args, )
-        print(colored("Bucket: " + args + ", has been successfully deleted.", "green"))
+        # print(colored("Bucket: " + args + ", has been successfully deleted.", "green"))
         return SUCCESS
     except BaseException as e:
         print(colored("Can not delete the bucket, please see the exception message below:", "red"))
@@ -481,6 +477,10 @@ def do_copy_object(args: str) -> int:
     fromPathName = __reslove_a_path(fromPathName, False)
     toPathName = __reslove_a_path(toPathName, False)
 
+    if not fromPathName:
+        print(colored("ccopy error, you have to provide the name of the source file to copy from", "red"))
+        return UNSUCCESS
+
     if not __present_of_a_path(fromBucketName, fromPathName):
         print(colored("ccopy error, source file does not exist", "red"))
         return UNSUCCESS
@@ -509,6 +509,10 @@ def do_copy_object(args: str) -> int:
                 return UNSUCCESS
     except BaseException as e:
         print(colored("Can not make copy", "red"))
+
+    if not toPathName:
+        print(colored("ccopy error, you have to give a name to the destination file", "red"))
+        return UNSUCCESS
 
     # and the destination must not exist
     if __present_of_a_path(toBucketName, toPathName):
@@ -651,7 +655,7 @@ def do_delete_object(args: str) -> int:
         # if it is a file object, not end with "/", we can delete it directly
         if my_object_name and my_object_name[-1] != "/":
             obj.delete()
-            print(colored(" The object " + my_object_name + " has been deleted", "green"))
+            # print(colored(" The object " + my_object_name + " has been deleted", "green"))
             return SUCCESS
 
         # if it is a folder object, we need to check if there are any subfolders inside
@@ -680,7 +684,7 @@ def do_delete_object(args: str) -> int:
                         s3_working_directory = "/".join(mylist) + "/"  # put the path structure back
                     else:
                         s3_working_directory = ""
-        print(colored(" The object " + my_object_name + " has been deleted", "green"))
+        # print(colored(" The object " + my_object_name + " has been deleted", "green"))
         return SUCCESS
     except client.exceptions.NoSuchKey as e:
         print(colored(
@@ -861,6 +865,8 @@ def __present_of_a_path(bucketName, pathName) -> bool:
             return False
 
 
+
+
 # resolve a relative path, and if needed, we add a ending slash at the end of the output path
 # note that in S3, all the folder object is ending with / but file object does not ending with /
 def __reslove_a_path(args: str, addEndingSlash=True):
@@ -1031,9 +1037,15 @@ def do_test(args: str):
     # test for shlex
 
     # print(__present_of_a_path("cis4010-ymei","a space/"))
-    mypath = __helper__make_a_full_path(args)
-    print(mypath)
-    return do_copy_from_cloud_need_a_warpper("cis4010b01", "main.py", mypath)
+    # mypath = __helper__make_a_full_path(args)
+    # print(mypath)
+    # return do_copy_from_cloud_need_a_warpper("cis4010b01", "main.py", mypath)
+
+    if __present_of_a_path(toBucketName, toPathName):
+        print(colored("ccopy error, destination file already exist", "red"))
+        return UNSUCCESS
+
+
 
 
 def do_list(args: str):
@@ -1494,6 +1506,12 @@ def __validate_folder_helper(bucketName, pathNameList):
             return False
     return True
 
+def do_cd(args):
+    if not args:
+        pass
+    else:
+        myargs = shlexsplit(args)
+        os.chdir(myargs[0])
 
 def do_quit(*args):
     endingStr = "Exiting the S5 Shell Program Now...\n"
@@ -1523,6 +1541,7 @@ dispatch = {
     "ccopy": do_copy_object,
     "cl_copy": do_copy_cloud,
     "cl": do_copy_cloud,
+    "cd":do_cd,
 }
 
 while True:
@@ -1561,15 +1580,5 @@ while True:
             print(colored(e, "red"))
             print(colored("Please double check your arguments:" + arg, "red"))
 
-# response = client.list_buckets()
-# print(response)
-# # Output the bucket names
-# print("Existing buckets:")
-# for bucket in response['Buckets']:
-#     print(f'{bucket["Name"]}')
 
 
-## Questions for TA's
-
-# 1) should I worry about what if the user changed the credential files while S5 is running?
-# 2) If the user suddenly lost internet connection, or admin deleted the user account while S5 is running, should I just break from the main while loop to let user to restart the S5 shell? Or should I keep the S5 Running, so that local command such as echo, cd can still be supported?
