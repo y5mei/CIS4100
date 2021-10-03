@@ -1045,9 +1045,9 @@ def do_test(args: str):
     # print(mypath)
     # return do_copy_from_cloud_need_a_warpper("cis4010b01", "main.py", mypath)
 
-    if __present_of_a_path(toBucketName, toPathName):
-        print(colored("ccopy error, destination file already exist", "red"))
-        return UNSUCCESS
+    # if __present_of_a_path(toBucketName, toPathName):
+    #     print(colored("ccopy error, destination file already exist", "red"))
+    #     return UNSUCCESS
 
 
 
