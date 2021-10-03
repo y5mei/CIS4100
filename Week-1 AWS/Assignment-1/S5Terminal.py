@@ -1513,6 +1513,8 @@ def __validate_folder_helper(bucketName, pathNameList):
 def do_cd(args):
     if not args:
         pass
+    # elif platform.system() == "Windows":
+    #     os.system("cd "+args)
     else:
         myargs = shlexsplit(args)
         os.chdir(myargs[0])
@@ -1559,6 +1561,7 @@ while True:
 
     # Requirment 3 1) if the input command is not a required function,
     # call the os.sys() method to use the system shell to handle it
+
     if len(user_input.split(" ", 1)) > 1:  # if input contains argument
         command, arg = user_input.split(" ", 1)[0], user_input.split(" ", 1)[1]
     else:
