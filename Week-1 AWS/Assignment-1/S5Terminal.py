@@ -1,7 +1,4 @@
 from collections import deque
-# import readline
-from pyreadline import Readline
-readline = Readline()
 import ReadCredentials
 import boto3
 import sys
@@ -14,6 +11,11 @@ import requests
 from tabulate import tabulate
 from shlex import split as shlexsplit
 from pathlib import Path
+
+# detected the current running environment
+running_platform = platform.system()
+if running_platform !="Windows":
+    import readline
 
 # use Colorama to make Termcolor work on Windows too
 # ref： https://pypi.org/project/colorama/
@@ -95,8 +97,7 @@ except BaseException as e:
 ##########################################################################################
 # Main Entrance of this program
 ##########################################################################################
-# detected the current running environment
-running_platform = platform.system()
+
 # print(running_platform)
 # detect the current local working directory
 local_working_directory = os.getcwd()
