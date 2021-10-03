@@ -1,4 +1,5 @@
 from collections import deque
+import readline
 import ReadCredentials
 import boto3
 import sys
@@ -16,8 +17,8 @@ from pathlib import Path
 # ref： https://pypi.org/project/colorama/
 init()
 
-from os import path
-from pynput.keyboard import Key, Controller
+# from os import path
+# from pynput.keyboard import Key, Controller
 
 ON_CONNECTION_SUCCESS_TEXT = "Welcome to the AWS S3 Storage Shell (S5) \nYou are now connected to your S3 storage"
 ON_CONNECTION_FAIL_TEXT = "Welcome to the AWS S3 Storage Shell (S5)\nYou could not be connected to your S3 " \
