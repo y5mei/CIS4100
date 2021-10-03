@@ -1,5 +1,7 @@
 from collections import deque
-import readline
+# import readline
+from pyreadline import Readline
+readline = Readline()
 import ReadCredentials
 import boto3
 import sys
