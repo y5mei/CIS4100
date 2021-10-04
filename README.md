@@ -56,7 +56,7 @@ S5> cdelete cis4010b01:images/cat
 # This command will delete the empty cat folder (you must have the ending "/")
 S5> cdelete cis4010b01:images/cat/
 ```
-3. All the 3 copy command, lc_copy, cl_copy, and ccopy are supporting copying a folder object. Same idea as the cdelete command, if you the source you want to copy is a folder obejct, you have to add a "/" at the end.
+3. All the 3 copy command, lc_copy, cl_copy, and ccopy are supporting copying a folder object. Same idea as the cdelete command, if the source you want to copy is a folder obejct, you must have to add a "/" at the end.
 
 ```
 # This command will copy the "images" to local as the "images.png" file
