@@ -146,16 +146,8 @@ def do_lc_copy(args: str) -> int:
         bucket_name = argsList[1]
         pathname3_s3_obj = argsList[2]
 
-    # 1. check if the local file present
-    try:
-        # path.exists(argsList[0])
-        open(argsList[0], "r")
-    except:
-        error_message = "S5 Error: Invalid path name for the local file: " + argsList[0]
-        print(colored(error_message, "red"))
-        return UNSUCCESS
 
-    # 2. check if the bucket is available
+    # 1. check if the bucket is available
     try:
         resource.meta.client.head_bucket(Bucket=bucket_name)
         # if does not have permission to get access to this bucket
@@ -180,7 +172,97 @@ def do_lc_copy(args: str) -> int:
         print(e)
         return UNSUCCESS
 
-    # 3. check if we can successfully upload the file to AWS
+    # 2. check if the local file present
+    ######################################################################
+    # I have to know if this is a file object or this is a folder object
+    ######################################################################
+
+    # we get the absolute file path first
+    my_true_local_path_name = __helper__make_a_full_path(argsList[0])
+    # then we solve it in case it contains any ../..
+    my_true_local_path_name = Path(my_true_local_path_name).resolve()
+    # print(my_true_local_path_name)
+    FLAG_FOR_COPY_FOLDER = False
+    if os.path.isdir(my_true_local_path_name): # if it is a directory, we just need to create a folder object
+        # print("\nIt is a directory")
+        # print(my_true_local_path_name)
+        myargs = "\""+bucket_name+":"+pathname3_s3_obj+"\""
+        FLAG_FOR_COPY_FOLDER = True
+
+        # 3.1. check if we can successfully upload the folder to AWS
+        try:
+            # need to add a function to add sub-folders along the path
+            # for the file name, check that there are no two slash together and not star from a slash
+
+            if not __check_no_two_slash_together_and_not_start_with_slash__(pathname3_s3_obj):
+                print(colored("S5 Error: The input: " + pathname3_s3_obj + " is illegal!", "red"))
+                print(colored("The filepath should not start with '/' or have more than two '/' side by side.", "red"))
+                return UNSUCCESS
+            # resolve the path name first
+            pathname3_s3_obj = __reslove_a_path(pathname3_s3_obj, True)
+
+            if pathname3_s3_obj:  # if the S3 path not is empty
+                pathname3_s3_obj_list = pathname3_s3_obj.split("/")
+            else:  # if the S3 path not is "", but what to do with "            "
+                print(colored("S5 Error: destination file path is empty ", "red"))
+                print(colored(pathname3_s3_obj, "red"))
+                return UNSUCCESS
+
+
+            if pathname3_s3_obj_list[-1] != "":  # 1/2/3/
+                print(colored("S5 Error: destination folder name is either invalid or not end with '/': ", "red"))
+                print(colored(pathname3_s3_obj_list, "red"))
+                return UNSUCCESS
+            else:
+                if pathname3_s3_obj_list: # pop out the ending " "
+                    pathname3_s3_obj_list.pop()  # prepare the subfodler list for checking if they exist or not
+                if pathname3_s3_obj_list: # pop out the folder name itself
+                    pathname3_s3_obj_list.pop()  # prepare the subfodler list for checking if they exist or not
+
+            # print("these are the subfolders I need to check to make sure they are not exist", pathname3_s3_obj_list)
+            # return True
+
+            # need to check if all the sub folders are exist, return UNSUCCESS if any subfolder is not avaliable
+            if not __validate_folder_helper(bucket_name, pathname3_s3_obj_list):
+                badPath = bucket_name + ":" + "/".join(pathname3_s3_obj_list)
+                print(colored("S5 Error: The input folder: " + badPath + "/ does not exist!", "red"))
+                return UNSUCCESS
+
+            # need to check if there is a that file already, we will stop copy the file if it is already there
+
+            # the target must not exist
+            pathname3_s3_obj = __reslove_a_path(pathname3_s3_obj, True)
+            # print("I am going to create a object with key: ", pathname3_s3_obj)
+            if __present_of_a_path(bucket_name, pathname3_s3_obj):
+                print(colored("Unsuccessful lc_copy, destination folder already exist, please give it another name!",
+                              "red"))
+                return UNSUCCESS
+
+            # response = client.upload_file(local_file_path, bucket_name, pathname3_s3_obj)
+
+            # # also need to create all the suborders associated with this object
+            # __create_folder_helper(bucket_name, pathname3_s3_obj_list)
+            myargs = "\"" + bucket_name + ":" + pathname3_s3_obj + "\""
+            return do_create_folder(myargs)
+        except BaseException as e:
+            print(colored("lc_copy unsuccessful: Not able to upload the file:", "red"))
+            print(e)
+            return UNSUCCESS
+
+
+        # return do_create_folder(args)
+        # print("I am going to create a folder here: ", myargs)
+    elif os.path.isfile(my_true_local_path_name):
+        print("\nIt is a normal file")
+        FLAG_FOR_COPY_FOLDER = False
+    else: # if this local file/folder object is not exist or not available
+        error_message = "lc_copy unsuccessful: The local file is neither not exist or it is a special file (socket, FIFO, device file)"
+        print(colored(error_message, "red"))
+        return UNSUCCESS
+    # return SUCCESS
+
+
+    # 3. check if we can successfully upload the file object to AWS
     try:
         # need to add a function to add sub-folders along the path
         # for the file name, check that there are no two slash together and not star from a slash
@@ -191,8 +273,13 @@ def do_lc_copy(args: str) -> int:
             return UNSUCCESS
         # resolve the path name first
         pathname3_s3_obj = __reslove_a_path(pathname3_s3_obj, False)
-        if pathname3_s3_obj:
+
+        if pathname3_s3_obj: # if the S3 path not is empty
             pathname3_s3_obj_list = pathname3_s3_obj.split("/")
+        else:# if the S3 path not is "", but what to do with "            "
+            print(colored("S5 Error: destination file path is empty ", "red"))
+            print(colored(pathname3_s3_obj, "red"))
+            return UNSUCCESS
 
         if pathname3_s3_obj_list[-1] == "":  # 1/2/3/
             print(colored("S5 Error: destination file name is either empty or end with '/': ", "red"))
@@ -222,7 +309,7 @@ def do_lc_copy(args: str) -> int:
 
         return SUCCESS
     except BaseException as e:
-        print(colored("Not able to upload the file:", "red"))
+        print(colored("lc_copy unsuccessful: Not able to upload the file:", "red"))
         print(e)
         return UNSUCCESS
     #
@@ -456,16 +543,17 @@ def do_copy_object(args: str) -> int:
         print(colored(mylist, "red"))
         return UNSUCCESS
 
-    # now resolve all the file path names:
-    # they can not be ended with "/" because they are not folders
-    if fromPathName and fromPathName[-1] == "/":
-        print(colored("ccopy of a Folder is not supported according to assignment-1 requirements, the source must be "
-                      "a file object not a folder", "red"))
-        return UNSUCCESS
-    if toPathName and toPathName[-1] == "/":
-        print(colored("ccopy to a Folder is not supported according to assignment-1 requirements, you need to give "
-                      "destination object a name", "red"))
-        return UNSUCCESS
+    # add the functionality to support copy of folder objects
+    # # now resolve all the file path names:
+    # # they can not be ended with "/" because they are not folders
+    # if fromPathName and fromPathName[-1] == "/":
+    #     print(colored("ccopy of a Folder is not supported according to assignment-1 requirements, the source must be "
+    #                   "a file object not a folder", "red"))
+    #     return UNSUCCESS
+    # if toPathName and toPathName[-1] == "/":
+    #     print(colored("ccopy to a Folder is not supported according to assignment-1 requirements, you need to give "
+    #                   "destination object a name", "red"))
+    #     return UNSUCCESS
 
     # the from path and the to path must have no two slash together
     # print(fromPathName)
@@ -477,16 +565,34 @@ def do_copy_object(args: str) -> int:
         print(colored("ccopy error, destination file format error: " + toPathName, "red"))
         return UNSUCCESS
 
-    # the source must exist
-    fromPathName = __reslove_a_path(fromPathName, False)
-    toPathName = __reslove_a_path(toPathName, False)
 
+    # resolve the path names, if the from Path Name is ending with a "/", then we are going to copy it as a folder object
+    # otherwise, we are going to copy it as a file object
+    if fromPathName and fromPathName[-1]=="/":# this is a copy of folder
+        fromPathName = __reslove_a_path(fromPathName, True)
+        toPathName = __reslove_a_path(toPathName, True)
+        myargs = "\""+toBucketName+":"+toPathName+"\""
+        # print("Going to create a folder at ",myargs)
+        return do_create_folder(myargs)
+
+    if fromPathName and fromPathName[-1]!="/": # this is a copy of a file object, give user a warning how to ccopy a folder
+        fromPathName = __reslove_a_path(fromPathName, False)
+        toPathName = __reslove_a_path(toPathName, False)
+        # give user a warning that ccopy command will treat everything as a file object, if you want to ccopy
+        # a directory, make sure you end the pathname with a forward slash
+        print(colored("================ WARNING ================", "blue"))
+        print(colored("This ccopy command will run through unless you see a red error message. As general:", "blue"))
+        print(colored("S5 will treat all the pathname input without the ending '/' as the pathname of a FILE,\n" +
+                      "If you are trying to ccopy a FOLDER, you MUST end the pathname input with a '/'", "blue"))
+        print(colored("=========================================", "blue"))
+
+    # the source must exist
     if not fromPathName:
-        print(colored("ccopy error, you have to provide the name of the source file to copy from", "red"))
+        print(colored("ccopy error, you have to provide the name of the source object to copy from", "red"))
         return UNSUCCESS
 
     if not __present_of_a_path(fromBucketName, fromPathName):
-        print(colored("ccopy error, source file does not exist", "red"))
+        print(colored("ccopy error, source object does not exist", "red"))
         return UNSUCCESS
 
     ###############################################################################
@@ -581,6 +687,7 @@ def __helper__make_a_full_path(localPathName):
 # download a file from AWS to local directory
 # I used a lot of helper function to handle error
 # this is the last method I wrote, and this is the best method so far
+# I have modified it to support copy a folder to local
 def do_copy_cloud(args: str) -> bool:
     try:
         user_input = __helper__split_args__(args, expact_arguments_num=2) # make sure the input has two parts
@@ -589,6 +696,11 @@ def do_copy_cloud(args: str) -> bool:
         my_local_object_path = __helper__make_a_full_path(user_input[1]) # get the local object path
         # print(my_bucket_name, my_object_path, my_local_object_path)
         __helper__check_if_a_loca_file_name_is_avaliable(my_local_object_path)
+
+        if my_object_path and my_object_path[-1]=="/": # If the source is a folder,
+            os.mkdir(my_local_object_path) # we just need to create a local folder object
+            return SUCCESS
+        # if the source is not a folder, then just download the object
         return do_copy_from_cloud_need_a_warpper(my_bucket_name, my_object_path,my_local_object_path)
     except BaseException as e:
         print(colored(e,"red"))
@@ -642,6 +754,7 @@ def do_delete_object(args: str) -> int:
     # a directory, make sure you end the pathname with a forward slash
     if my_object_name and my_object_name[-1] != "/":
         print(colored("================ WARNING ================", "blue"))
+        print(colored("This cdelete command will run through unless you see a red error message. As general:", "blue"))
         print(colored("S5 will treat all the pathname input without the ending '/' as the pathname of a FILE,\n" +
                       "If you are trying to delete a FOLDER, you MUST end the pathname input with a '/'", "blue"))
         print(colored("=========================================", "blue"))
@@ -961,6 +1074,8 @@ def __helper__split_args__(args: str, expact_arguments_num=2):
 # if the name of bucket is not there, raise an error
 # if the key of the object is not there, raise an error
 # return a list [bucketName, Full_Path] if success
+################################################################
+# This function works both for S3 file object and S3 folder object
 def __helper__validate_bucketName_and_Path__(args:str, justFileObject=True):
     global s3_working_directory
     global s3_bucket_name
@@ -975,11 +1090,11 @@ def __helper__validate_bucketName_and_Path__(args:str, justFileObject=True):
         error_message = "Wrong Path Name: "+args
         raise RuntimeError("S5 Error: " + error_message)
 
-    # make sure the file object is not end with "/"
-    if justFileObject and args[-1] == "/":
-        error_message = "This command is expecting to work with a S3 File object, but the input is a Folder Object: " + args
-        error_message = "\nMake sure you do not have '/' at the end for an file object"
-        raise RuntimeError("S5 Error: " + error_message)
+    # # make sure the file object is not end with "/"
+    # if justFileObject and args[-1] == "/":
+    #     error_message = "This command is expecting to work with a S3 File object, but the input is a Folder Object: " + args
+    #     error_message += "\nMake sure you do not have '/' at the end for an file object"
+    #     raise RuntimeError("S5 Error: " + error_message)
 
 
     # check if this is a relative path or a absolute path:
@@ -1013,7 +1128,12 @@ def __helper__validate_bucketName_and_Path__(args:str, justFileObject=True):
 
     # maker sure the file object is there
     # __present_of_a_path()
-    pathName = __reslove_a_path(my_working_name, False)
+    # if the file object is a file
+    if my_working_name and my_working_name[-1]=="/": # if this is a folder object
+        pathName = __reslove_a_path(my_working_name, True)
+    else:
+        pathName = __reslove_a_path(my_working_name, False) # if this is a file object
+
     try:
         item = resource.Object(my_bucket_name, pathName).get()
     except BaseException as e:
