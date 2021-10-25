@@ -1,0 +1,10 @@
+For shortlist_curpop.csv
+   - 2019 population for Australia   25203198
+   - 2019 population for Bangladesh 163046161
+   - 2019 population for Canada      37411047
+   - 2019 population for Costa Rica   5047561
+
+For shortlist_languages.csv
+   - add to COM: French
+   - add to COK: English
+

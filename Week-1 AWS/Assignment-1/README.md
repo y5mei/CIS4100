@@ -56,10 +56,19 @@ S5> cdelete cis4010b01:images/cat
 # This command will delete the empty cat folder (you must have the ending "/")
 S5> cdelete cis4010b01:images/cat/
 ```
+3. All the 3 copy command, lc_copy, cl_copy, and ccopy are supporting copying a folder object. Same idea as the cdelete command, if the source you want to copy is a folder obejct, you must have to add a "/" at the end.
 
-3. list command does not support relative path as what bash's ls command does. It only list a bucket, or list a full path.
-4. The limitation of S5 shell is that the number of objects inside of any bucket can not be greater than 1000, as this is the limitation of Boto3 SDK's list_objects() method.
-5. The system cd command does not need a /d flag when switching between drives on the Windows environment. You can directly use cd E: to switch from C drive to E drive:
+```
+# This command will copy the "images" to local as the "images.png" file
+S5> cl_copy cis4010b01:images E:\CIS4100\Week-1 AWS\Assignment-1\images.png
+
+# This command will copy the "images" folder to local as the "images.png/" folder (you must have the ending "/")
+S5> cdelete cis4010b01:images/ E:\CIS4100\Week-1 AWS\Assignment-1\images.png
+```
+
+5. list command does not support relative path as what bash's ls command does. It only list a bucket, or list a full path.
+6. The limitation of S5 shell is that the number of objects inside of any bucket can not be greater than 1000, as this is the limitation of Boto3 SDK's list_objects() method.
+7. The system cd command does not need a /d flag when switching between drives on the Windows environment. You can directly use cd E: to switch from C drive to E drive:
 ```
 REM On Windows, the following cd command with a "/d" flg is not supported:
 S5> cd /d E:
