@@ -6,8 +6,9 @@ from colorama import init
 from shlex import split as shlexsplit
 # use Colorama to make Termcolor work on Windows too
 # ref： https://pypi.org/project/colorama/
-from Automate import print_gcp_instance_list, run_automate, automate_create, list_all_gcp_instance, short_command, \
-    delete_all_gcp_instance
+from Automate import list_all_gcp_instance, short_command, \
+    delete_all_gcp_instance, get_running_VM_status, delete_firewall_rules, get_current_VM_FireWall_rules, \
+    automate_create_gcp
 
 init()
 
@@ -25,10 +26,11 @@ dispatch = {
     "exit": do_quit,
     "q": do_quit,
     "Q": do_quit,
-    "automate_print": run_automate,
-    "gcreate":automate_create,
+    ## assignment-3 GCP commands
+    "gcreate":automate_create_gcp,
     "glist": list_all_gcp_instance,
     "gdelete":delete_all_gcp_instance,
+    "test":get_current_VM_FireWall_rules,
 }
 
 
