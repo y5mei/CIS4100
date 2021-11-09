@@ -6,9 +6,12 @@ from colorama import init
 from shlex import split as shlexsplit
 # use Colorama to make Termcolor work on Windows too
 # ref： https://pypi.org/project/colorama/
-from Automate import list_all_gcp_instance, short_command, \
-    delete_all_gcp_instance, get_running_VM_status, delete_firewall_rules, get_current_VM_FireWall_rules, \
+from Automate import vmcreate, vmdelete
+from AutomateGCP import list_all_gcp_instance, short_command, \
+    delete_all_gcp_instance, get_running_VM_status, get_current_VM_FireWall_rules, \
     automate_create_gcp
+from AutomateAzure import list_all_azure_instance, __list_all_azure_instance__, delete_all_azure_instance, \
+    automate_create_azure, __print_all_azure_images_resource__
 
 init()
 
@@ -30,7 +33,13 @@ dispatch = {
     "gcreate":automate_create_gcp,
     "glist": list_all_gcp_instance,
     "gdelete":delete_all_gcp_instance,
-    "test":get_current_VM_FireWall_rules,
+    "test":__list_all_azure_instance__,
+    "acreate":automate_create_azure,
+    "alist": list_all_azure_instance,
+    "adelete":delete_all_azure_instance,
+    "airlist":__print_all_azure_images_resource__,
+    "vmcreate":vmcreate,
+    "vmdelete":vmdelete,
 }
 
 
