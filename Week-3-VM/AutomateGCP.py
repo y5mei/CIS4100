@@ -3,6 +3,7 @@ import configparser
 import copy
 import getpass
 import os
+import platform
 import subprocess
 import sys
 import time
@@ -11,6 +12,11 @@ from tabulate import tabulate
 from termcolor import colored
 from colorama import init
 from DecoratorLib import try_catch
+
+# detected the current running environment
+running_platform = platform.system()
+if running_platform !="Windows":
+    import readline
 
 GCP_REQUIRED_KEYS = ["image", "imageproject", "zone"]
 GCP_OPTIONAL_KEYS = ["custom-cpu", "custom-memory", "create-disk"]
@@ -74,8 +80,7 @@ def automate_create_gcp():
             if not output: # if failed to create the VM
                 Error_Counter+=1
                 continue
-
-            print(colored(output, "green")) # print out green if successfully made the VM
+            # print(colored(output, "green")) # print out green if successfully made the VM
 
 
             # create the firewall rules if exist
