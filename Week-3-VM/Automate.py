@@ -83,9 +83,13 @@ def handle_config_file(date_stamp_of_vm=""):
         return
 
     if os.path.isfile('./gcp.conf'):
+        if not os.path.exists("./Archive/"): # if does not exist the Archive Folder, create one
+            os.makedirs("./Archive/")
         shutil.move('./gcp.conf', "./Archive/gcp_"+date_stamp_of_vm+".conf")
 
     if os.path.isfile('./azure.conf'):
+        if not os.path.exists("./Archive/"): # if does not exist the Archive Folder, create one
+            os.makedirs("./Archive/")
         shutil.move('./azure.conf', "./Archive/azure_"+date_stamp_of_vm+".conf")
 
 

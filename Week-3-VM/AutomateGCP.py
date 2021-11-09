@@ -80,12 +80,12 @@ def automate_create_gcp():
             if not output: # if failed to create the VM
                 Error_Counter+=1
                 continue
-            # print(colored(output, "green")) # print out green if successfully made the VM
+            print(colored(output, "green")) # print out green if successfully made the VM
 
 
             # create the firewall rules if exist
             if OPEN_PORT in dict.keys():
-                command = "gcloud compute firewall-rules create "+name_of_vm +" --allow="+dict[OPEN_PORT]+" --source-tags="+name_of_vm
+                command = "gcloud compute firewall-rules create "+name_of_vm +" --allow="+dict[OPEN_PORT]+" --target-tags="+name_of_vm+" --direction=INGRESS"
                 print(command)
                 process = os.popen(command)
                 output = process.read()
@@ -304,12 +304,23 @@ def __GCP_VM_input_validation__(dict):
 # need to make a deep copy of the dict
 
 def __print_gcp_instance__(dict):
+    vmname = dict["name"]
     prefix = "gcloud compute instances create \"" + dict["name"] + "\" "
 
     dict = copy.deepcopy(dict) # make a deepcopy of the dict
-    tags_to_remove = GCP_ADDITIONAL_INFO+["port","name"] # remove all the extral info tags
+    tags_to_remove = GCP_ADDITIONAL_INFO+["port","name","network"] # remove all the extral info tags
     for tag in tags_to_remove:
         dict.pop(tag,None)
+
+    # make sure the VM will have a tag the same name as its machine name
+
+    if "tags" in dict:
+        current_tags = dict["tags"]
+        if current_tags and vmname not in str(current_tags):
+            current_tags += ","+vmname
+            dict["tags"] = current_tags
+    else:
+        dict["tags"]=vmname
 
 
     # all the required information must be provided
