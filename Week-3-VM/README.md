@@ -91,7 +91,7 @@ public-ip-address = ""
 To prepare for the folder structure, please make sure you have the azure.conf or gcp.conf or both of them at the same level as the Automate.py file
 
 ```
---------some-folder-name
+--------some-folder-name/
           |----azure.conf
           |----gcp.conf
           |----DecoratorLib.py
@@ -99,6 +99,7 @@ To prepare for the folder structure, please make sure you have the azure.conf or
           |----AutomateGCP.py
           |----Automate.py
           |----S5Shell.py (optional)
+          |----Archive/ (optional, if you do not have one, automate.py will create one)
 ```
 #### 1.2.3 To Install the required Python Packages:
 ```shell
@@ -118,7 +119,7 @@ path-to-the-folder> python .\S5Shell.py
 ```shell
 # This command create GCP and Azure VMs according to the config files, and generate a log file for each VM created
 S5> vmcreate
-# This command delete all the GCP and Azure VMs as well as FireWall Rules (for GCP) and Resource-Groups (for Azure)
+# This command delete all the GCP and Azure VMs, attached external disk spaces, as well as FireWall Rules (for GCP) and Resource-Groups (for Azure)
 S5> vmdelete
 # This command quit the S5 Terminal, alternatively, you can also use exit, Q, or q command to quit the S5 Terminal
 S5> quit
@@ -148,9 +149,10 @@ S5> adelete
       1. Name, Project, Purpose, Team, OS, and the **Status of the VM** [as per the assignment-3 requirements]
       2. All the relevant information about the VM obtained from the config file
       3. All the relevant information about the VM obtained from `gcloud compute instances list` and `az vm show` command
-6. The Automate.py supports finely tune the VM via the config files for both Azure and GCP. To see the instruction about how to write the config files, please refer to Section 1.2 in this readme file
-7. After the creation of the VMs, move the azure.conf and gcp.conf files to the Archive Folder with name `azure_<date stamp>.conf` and `gcp_<date stamp>.conf`
+6. The Automate.py supports finely tune the VM via the config files for both Azure and GCP. To see the instruction about how to write the config files, please refer to Section 1.2 in this readme file. 
+I am supporting <span style="color:red"> **ALL** </span> the flags for the `create` CLI command for both GCP and Azure.
 
+For reference, these are all the [supported flags](https://docs.microsoft.com/en-us/cli/azure/vm?view=azure-cli-latest#az_vm_create) for Azure, and These are all the [supported flags](https://cloud.google.com/sdk/gcloud/reference/compute/instances/create) for GCP.
 
 Specifically, to let user specify that certain ports should be open (like port 80 for http and 443 for https)
 ```json
@@ -177,3 +179,6 @@ size Standard_DS2_v2
 data-disk-sizes-gb 15
 ...
 ```
+
+7. After the creation of the VMs, move the azure.conf and gcp.conf files to the <span style="color:red"> **Archive Folder** </span> with name `azure_<date stamp>.conf` and `gcp_<date stamp>.conf`, the <span style="color:red"> **Log File** </span> will be generated in the main folder as where the Automate.py is.
+8. Last, but not the least, I have made an extra copy of the config files in the `Config_Files_Backups folder`. In case if you want to have a start point to test more finely tune flags after you run the Automate.py file, you can directly copy and paste these config files from the backup folder and paste to the main working dirctory.
