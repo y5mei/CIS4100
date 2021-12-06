@@ -11,16 +11,10 @@ from azure.storage.blob import ContainerClient
 
 
 # how to use the SDK: https://pypi.org/project/azure-storage-blob/
-# CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=cis4010;AccountKey=QHinGrxrxW082ZzBvBmQ7nd4JXzNQUbAWzKjwlLG4VBf7QXi+MIguhCmO2pEU9A0txPJMkM6zTcdlcBu4XT0vg==;EndpointSuffix=core.windows.net"
-# MY_ACCOUNT_NAME = "cis4010"
-# MY_ACCOUNT_KEY = "QHinGrxrxW082ZzBvBmQ7nd4JXzNQUbAWzKjwlLG4VBf7QXi+MIguhCmO2pEU9A0txPJMkM6zTcdlcBu4XT0vg=="
+
 
 # My local settings
 
-# Display name:MyEmulator
-# Account name:devstoreaccount1
-# Account key:Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw ==
-# Default endpoints protocol:
 # http
 # Blob endpoint:
 # http: // 127.0.0.1: 10000/devstoreaccount1
