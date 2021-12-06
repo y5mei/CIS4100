@@ -1,0 +1,7 @@
+boto3~=1.18.21
+pip~=21.0.1
+wheel~=0.37.0
+openssl~=1.1.1l
+cryptography~=3.4.7
+setuptools~=52.0.0
+docutils~=0.17.1

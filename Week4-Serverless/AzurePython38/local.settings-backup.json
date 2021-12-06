@@ -1,0 +1,8 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "DefaultEndpointsProtocol=https;AccountName=cis4010;AccountKey=QHinGrxrxW082ZzBvBmQ7nd4JXzNQUbAWzKjwlLG4VBf7QXi+MIguhCmO2pEU9A0txPJMkM6zTcdlcBu4XT0vg==;EndpointSuffix=core.windows.net",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "cis4010_STORAGE": "DefaultEndpointsProtocol=https;AccountName=cis4010;AccountKey=QHinGrxrxW082ZzBvBmQ7nd4JXzNQUbAWzKjwlLG4VBf7QXi+MIguhCmO2pEU9A0txPJMkM6zTcdlcBu4XT0vg==;EndpointSuffix=core.windows.net"
+  }
+}
